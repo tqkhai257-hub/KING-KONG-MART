@@ -9,6 +9,10 @@
     <title>Kiểm Hàng Pro - Quản Lý & Trưng Bày</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
     <style>
         body { font-family: 'Segoe UI', sans-serif; margin: 0; padding: 10px; padding-bottom: 90px; background-color: #f0f2f5; }
         .card { background: white; padding: 15px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
@@ -45,6 +49,17 @@
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 10001; padding: 15px; box-sizing: border-box; align-items: center; justify-content: center; }
         .modal-content { background: white; padding: 20px; border-radius: 12px; width: 100%; max-height: 80vh; overflow-y: auto; box-sizing: border-box; }
         .modal-item { padding: 10px 0; border-bottom: 1px solid #eee; }
+
+        /* CSS Mới cho cây thư mục Đám Mây */
+        .sync-status { font-size: 13px; color: #dc3545; font-weight: bold; text-align: center; margin-top: 8px; }
+        .sync-status.ok { color: #28a745; }
+        .folder-block { border: 1px solid #ddd; border-radius: 8px; margin-bottom: 15px; background: #fff; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .folder-header { background: #f8f9fa; color: #333; padding: 12px; font-weight: bold; font-size: 15px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; }
+        .folder-body { padding: 10px; background: #fafafa; }
+        
+        /* FIX LỖI: Thêm padding-right bảo vệ chữ không bị đè bởi nút XÓA FILE tuyệt đối */
+        .file-item-cloud { background: white; border: 1px solid #eee; border-radius: 6px; padding: 12px; margin-bottom: 10px; position: relative; padding-right: 95px; }
+        .delete-file-btn { position: absolute; right: 10px; top: 10px; background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -55,6 +70,9 @@
         </div>
         <div id="nav-trungbay" class="nav-item" onclick="switchTab('trung_bay')">
             <span class="nav-icon">🏪</span> Trưng Bày
+        </div>
+        <div id="nav-tonghop" class="nav-item" onclick="switchTab('tong_hop')">
+            <span class="nav-icon">📂</span> Tổng Hợp
         </div>
     </nav>
 
@@ -72,7 +90,26 @@
             <h2>1. Nhập danh mục hàng trưng bày</h2>
             <p style="font-size: 13px; color: #666; margin-top: 0;">Tải lên file dữ liệu có chứa các cột: <b>makiot</b>, <b>ten</b>, <b>dvt</b> để hiển thị thông tin sản phẩm khi quét.</p>
             <input type="file" id="master-file" accept=".xlsx, .xls, .csv" />
-            <button class="btn-purple" onclick="loadMasterDataAndStart()">🚀 TẢI DANH MỤC & BẮT ĐẦU QUÉT</button>
+            
+            <p style="font-size: 13px; color: #666; margin-top: 12px; margin-bottom: 4px;"><b>Chọn Thư mục / Nhóm hàng để gom dữ liệu:</b></p>
+            <select id="folder-select" style="border: 1px solid #6f42c1;"></select>
+            <div id="firebase-status" class="sync-status">⚠️ Chưa kết nối Firebase (Dữ liệu lưu tạm)</div>
+
+            <button class="btn-purple" onclick="loadMasterDataAndStart()" style="margin-top: 15px;">🚀 TẢI DANH MỤC & BẮT ĐẦU QUÉT</button>
+        </div>
+    </div>
+
+    <div id="tab-tonghop-container" class="tab-content" style="display: none;">
+        <div class="card">
+            <h2>📂 Trung Tâm Quản Lý Thư Mục Tổng Hợp</h2>
+            <div style="background: #e6f2ff; padding: 12px; border-radius: 8px; margin-bottom: 15px;">
+                <p style="margin: 0 0 6px 0; font-size: 14px; font-weight: bold; color: #007bff;">➕ Tạo Thư Mục Nhóm Hàng Mới:</p>
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" id="new-folder-input" placeholder="Ví dụ: Kệ Sữa, Tủ Đông, Gia Vị..." style="margin: 0; flex: 1;">
+                    <button class="btn-success" onclick="createNewFolderFromCloud()" style="width: auto; margin: 0; padding: 0 20px;">TẠO MỚI</button>
+                </div>
+            </div>
+            <div id="cloud-folder-root-list"></div>
         </div>
     </div>
 
@@ -123,6 +160,7 @@
         <h2 id="result-title">Kết quả đối soát</h2>
         <div id="result-list"></div>
         <button onclick="exportToExcel()" class="btn-info" style="margin-top: 15px; background-color: #117a8b;">📊 XUẤT FILE EXCEL</button>
+        <button id="sync-cloud-btn" onclick="exportAndSyncDisplayV3()" class="btn-purple" style="margin-top: 10px; display:none;">📊 XUẤT EXCEL & ĐỒNG BỘ ĐÁM MÂY</button>
         <button id="save-ticket-btn" onclick="saveTicket()" class="btn-success" style="margin-top: 10px;">HOÀN THÀNH & LƯU</button>
         <button onclick="location.reload()" class="btn-secondary" style="margin-top:10px;">BỎ QUA / TRANG CHỦ</button>
     </div>
@@ -153,7 +191,36 @@
         let html5QrCode, isPaused = false, lastScannedCode = null, lastHSDValue = "N/A";
         let idxTicket = 0, idxCode = 16, idxName = 17, idxUnit = 18, idxQty = 21, headerIndex = 0;
 
-        // --- HÀM CHUYỂN ĐỔI TAB (GIAO DIỆN FACEBOOK/YOUTUBE STYLE) ---
+        // --- ĐOẠN CẤU HÌNH ĐỒNG BỘ FIREBASE SINGAPORE CHUẨN XÁC ---
+        const FIREBASE_CONFIG = {
+            apiKey: "AIzaSyA-i4W--NbWqxpwhoFtIRifNkY0wOpQ6bk",
+            authDomain: "kingkongmart-55cc6.firebaseapp.com",
+            databaseURL: "https://kingkongmart-55cc6-default-rtdb.asia-southeast1.firebasedatabase.app/",
+            projectId: "kingkongmart-55cc6",
+            storageBucket: "kingkongmart-55cc6.firebasestorage.app",
+            messagingSenderId: "94416808373",
+            appId: "1:94416808373:web:f94bb6e278428a2ec2d1fc"
+        };
+
+        let isFirebaseReady = false; let database = null; let currentFolder = 'Chung';
+
+        function initFirebaseSystem() {
+            if (FIREBASE_CONFIG.apiKey !== "") {
+                try {
+                    firebase.initializeApp(FIREBASE_CONFIG);
+                    database = firebase.database(); 
+                    isFirebaseReady = true;
+                    const fbStatus = document.getElementById('firebase-status');
+                    if(fbStatus) {
+                        fbStatus.className = "sync-status ok";
+                        fbStatus.innerText = "✅ Đã kết nối Đám Mây. Sẵn sàng đồng bộ trực tuyến.";
+                    }
+                    initFolderSync();
+                } catch (e) { console.error("Lỗi cấu hình Firebase: ", e); }
+            }
+        }
+
+        // --- HÀM CHUYỂN ĐỔI TAB (BỔ SUNG THÊM HOẠT ĐỘNG TAB 3 ĐÁM MÂY) ---
         function switchTab(tab) {
             scanMode = tab;
             if(html5QrCode) {
@@ -165,6 +232,7 @@
             // Ẩn toàn bộ giao diện chính
             document.getElementById('tab-kiemhang-container').style.display = 'none';
             document.getElementById('tab-trungbay-container').style.display = 'none';
+            document.getElementById('tab-tonghop-container').style.display = 'none';
             document.getElementById('ticket-selection-section').style.display = 'none';
             document.getElementById('scan-section').style.display = 'none';
             document.getElementById('result-section').style.display = 'none';
@@ -174,12 +242,16 @@
             // Đổi trạng thái nút bấm trên Navigation Bar
             document.getElementById('nav-kiemhang').className = (tab === 'kiem_hang') ? 'nav-item active' : 'nav-item';
             document.getElementById('nav-trungbay').className = (tab === 'trung_bay') ? 'nav-item active' : 'nav-item';
+            document.getElementById('nav-tonghop').className = (tab === 'tong_hop') ? 'nav-item active' : 'nav-item';
             
             // Hiển thị tab tương ứng
             if(tab === 'kiem_hang') {
                 document.getElementById('tab-kiemhang-container').style.display = 'block';
-            } else {
+            } else if(tab === 'trung_bay') {
                 document.getElementById('tab-trungbay-container').style.display = 'block';
+            } else if(tab === 'tong_hop') {
+                document.getElementById('tab-tonghop-container').style.display = 'block';
+                loadCloudStructureV3();
             }
         }
 
@@ -222,7 +294,7 @@
             if(selected.length === 0) { alert("Bạn phải chọn ít nhất 1 phiếu!"); return; }
             inventory = {}; let totalItemsCount = 0;
             for(let i = headerIndex + 1; i < fullData.length; i++) {
-                let row = fullData[i]; if (!row || row.length === 0) continue;
+                let row = fullData[i];if (!row || row.length === 0) continue;
                 let tId = row[idxTicket] ? row[idxTicket].toString().trim() : null;
                 if(tId && selected.includes(tId)) {
                     let code = row[idxCode] ? row[idxCode].toString().trim() : null;
@@ -249,14 +321,15 @@
             startScanner();
         }
 
-        // --- XỬ LÝ ĐỌC DANH MỤC FILE TRƯNG BÀY (Yêu cầu nâng cấp 2) ---
+        // --- XỬ LÝ ĐỌC DANH MỤC FILE TRƯNG BÀY ---
         function loadMasterDataAndStart() {
             const fileInput = document.getElementById('master-file').files[0];
+            currentFolder = document.getElementById('folder-select').value || 'Chung';
             productDict = {}; 
             displayInventory = {}; 
 
             if (!fileInput) {
-                if(confirm("Bạn chưa chọn file danh mục. Hệ thống sẽ không hiển thị được Tên và ĐVT sản phẩm. Bạn có muốn tiếp tục quét không?")) {
+                if(confirm(`Bạn chưa chọn file danh mục. Hệ thống lưu tạm số lượng kiểm. Vào nhóm [${currentFolder}] ngay?`)) {
                     startDisplayScanMode();
                 }
                 return;
@@ -268,7 +341,6 @@
                 const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], {header: 1});
 
                 let iMakiot = -1, iTen = -1, iDvt = -1;
-                // Dò tìm tiêu đề chứa cột makiot, ten, dvt
                 for(let r = 0; r < Math.min(15, jsonData.length); r++) {
                     let rowStr = (jsonData[r] || []).join("").toLowerCase();
                     if(rowStr.includes("makiot") || rowStr.includes("ten") || rowStr.includes("tên")) {
@@ -283,7 +355,6 @@
                     }
                 }
 
-                // Nếu không quét được dòng header cụ thể, dùng dòng đầu tiên làm mặc định để dự đoán
                 if(iMakiot === -1) {
                     let firstRow = jsonData[0] || [];
                     for(let c = 0; c < firstRow.length; c++) {
@@ -299,7 +370,6 @@
                     return;
                 }
 
-                // Nạp toàn bộ dữ liệu vào Dictionary
                 let loadedCount = 0;
                 for(let i = 0; i < jsonData.length; i++) {
                     let row = jsonData[i];
@@ -323,11 +393,11 @@
             scanMode = 'trung_bay';
             document.getElementById('expected-box').style.display = 'none';
             document.getElementById('ticket-info-bar').style.display = 'none';
-            document.getElementById('edit-display-btn').style.display = 'flex'; // Hiện nút sửa số lượng trưng bày
+            document.getElementById('edit-display-btn').style.display = 'flex'; 
             document.getElementById('received-box').innerHTML = 'ĐÃ LƯU: <br><span id="cur-received">0</span>';
             document.getElementById('finish-btn').innerText = "KẾT THÚC & XUẤT FILE";
             document.getElementById('current-scan-info').style.background = '#6f42c1'; 
-            document.getElementById('cur-name').innerText = "Đang quét hàng trưng bày...";
+            document.getElementById('cur-name').innerText = `Đang quét nhóm [${currentFolder}]...`;
             
             document.getElementById('tab-trungbay-container').style.display = 'none';
             document.getElementById('scan-section').style.display = 'block';
@@ -337,8 +407,6 @@
         // --- QUÉT MÃ VÀ NHẬN DIỆN THÔNG TIN ---
         function handleDisplayScan(code) {
             if(navigator.vibrate) navigator.vibrate(100);
-            
-            // Lấy thông tin từ file đã đọc hiểu ở trên (Yêu cầu nâng cấp 2)
             let itemInfo = productDict[code] || { name: "Mã lạ (Không có trong danh mục file)", unit: "" };
             
             let qtyStr = prompt(`Quét thành công mã: ${code}\nTên: ${itemInfo.name}\nĐVT: ${itemInfo.unit}\n\nNhập số lượng trưng bày:`, "1");
@@ -348,7 +416,6 @@
                     if (!displayInventory[code]) displayInventory[code] = { scanned: 0 };
                     displayInventory[code].scanned += qty;
                     
-                    // Hiển thị trực quan lên màn hình app
                     document.getElementById('cur-code').innerText = code;
                     document.getElementById('cur-received').innerText = displayInventory[code].scanned;
                     document.getElementById('cur-name').innerText = itemInfo.name;
@@ -401,8 +468,7 @@
             container.insertBefore(toast, container.firstChild);
             if (container.childNodes.length > 3) container.removeChild(container.lastChild);
         }
-
-        // --- THÊM MÃ BẰNG TAY CHO CẢ KIỂM HÀNG VÀ TRƯNG BÀY (Yêu cầu nâng cấp 3) ---
+        // --- THÊM MÃ BẰNG TAY CHO CẢ KIỂM HÀNG VÀ TRƯNG BÀY ---
         function addManualQty() {
             let defaultCode = lastScannedCode || "";
             let targetCode = prompt("NHẬP MÃ SẢN PHẨM KHÔNG QUÉT ĐƯỢC:", defaultCode);
@@ -428,7 +494,6 @@
                         }
                     }
                 } else if (scanMode === 'trung_bay') {
-                    // Xử lý thêm mã bằng tay cho phần hàng trưng bày
                     let itemInfo = productDict[targetCode] || { name: "Mã lạ (Không có trong danh mục file)", unit: "" };
                     let input = prompt(`Mã thủ công: ${targetCode}\nTên: ${itemInfo.name}\nNhập số lượng trưng bày cần cộng thêm:`, "1");
                     if (input !== null && input.trim() !== "") {
@@ -450,7 +515,7 @@
             }
         }
 
-        // --- DANH SÁCH VÀ CHỨC NĂNG SỬA LẠI SỐ LƯỢNG ĐÃ QUÉT (Yêu cầu nâng cấp 4) ---
+        // --- DANH SÁCH VÀ CHỨC NĂNG SỬA LẠI SỐ LƯỢNG ĐÃ QUÉT ---
         function openEditDisplayModal() {
             let keys = Object.keys(displayInventory);
             if(keys.length === 0) {
@@ -502,7 +567,7 @@
             document.getElementById('edit-display-modal').style.display = 'none';
         }
 
-        // --- CÁC TÍNH NĂNG KHÁC GIỮ NGUYÊN KHÔNG THAY ĐỔI ---
+        // --- CÁC TÍNH NĂNG ĐO ĐẠC HSD KHÔNG ĐỔI ---
         function calculateHSD() {
             const nsx = new Date(document.getElementById('nsx-input').value).getTime(), hsd = new Date(document.getElementById('hsd-input').value).getTime(), today = new Date().getTime();
             if (!nsx || !hsd) return; const pc = ((hsd - today) / (hsd - nsx)) * 100;
@@ -523,14 +588,18 @@
             document.getElementById('result-section').style.display = 'block';
             const list = document.getElementById('result-list');
             if (scanMode === 'kiem_hang') {
-                document.getElementById('result-title').innerText = "Kết quả đối soát"; document.getElementById('save-ticket-btn').style.display = 'inline-block';
+                document.getElementById('result-title').innerText = "Kết quả đối soát"; 
+                document.getElementById('save-ticket-btn').style.display = 'inline-block';
+                document.getElementById('sync-cloud-btn').style.display = 'none'; 
                 const sortedCodes = Object.keys(inventory).sort((a, b) => (inventory[a].scanned - inventory[a].expected) - (inventory[b].scanned - inventory[b].expected));
                 list.innerHTML = sortedCodes.map(code => {
                     const item = inventory[code]; const diff = item.scanned - item.expected;
                     return `<div style="padding:10px; border-bottom:1px solid #eee; color:${diff < 0 ? 'orange' : (diff > 0 ? 'red' : 'green')}; background:${diff < 0 ? '#fff9f0' : 'none'}"><b>${diff < 0 ? '⚠️ THIẾU' : (diff > 0 ? '❌ THỪA' : '✅ OK')} - ${code}</b><br><small>${item.name}</small><br>Giao: ${item.expected} | Nhận: ${item.scanned}</div>`;
                 }).join('');
             } else {
-                document.getElementById('result-title').innerText = "Danh Sách Hàng Trưng Bày"; document.getElementById('save-ticket-btn').style.display = 'none'; 
+                document.getElementById('result-title').innerText = "Danh Sách Hàng Trưng Bày"; 
+                document.getElementById('save-ticket-btn').style.display = 'none';
+                document.getElementById('sync-cloud-btn').style.display = 'inline-block'; 
                 list.innerHTML = Object.keys(displayInventory).map(code => {
                     let info = productDict[code] || { name: "Không rõ tên", unit: "" };
                     return `<div style="padding:10px; border-bottom:1px solid #eee; color: #6f42c1; background: #fdfbfe;"><b>📦 Mã SP: ${code}</b><br><small>${info.name} [ĐVT: ${info.unit || 'N/A'}]</small><br>Số lượng trưng bày: <b>${displayInventory[code].scanned}</b></div>`;
@@ -538,7 +607,7 @@
             }
         }
 
-        // --- ĐỔI TÊN FILE KHI XUẤT EXCEL & ĐỊNH DẠNG CỘT MỚI (Yêu cầu nâng cấp 1 & 2) ---
+        // --- XUẤT EXCEL GỐC GIỮ NGUYÊN ---
         function exportToExcel() {
             const excelData = []; const now = new Date(); const timeSuffix = `${now.getFullYear()}${now.getMonth()+1}${now.getDate()}_${now.getHours()}${now.getMinutes()}`;
             let finalFileName = "";
@@ -553,16 +622,13 @@
                 finalFileName = `KiemHang_${timeSuffix}.xlsx`;
             } else {
                 if (Object.keys(displayInventory).length === 0) { alert("Chưa có dữ liệu!"); return; }
-                
-                // Yêu cầu nâng cấp 1: Tạo tên file excel trước khi xuất file
                 let userInputName = prompt("NHẬP TÊN FILE EXCEL MUỐN LƯU:", `HangTrungBay_${timeSuffix}`);
-                if(userInputName === null) return; // Nếu ấn hủy không xuất nữa
+                if(userInputName === null) return; 
                 userInputName = userInputName.trim();
                 if(userInputName === "") userInputName = `HangTrungBay_${timeSuffix}`;
                 if(!userInputName.toLowerCase().endsWith(".xlsx")) userInputName += ".xlsx";
                 finalFileName = userInputName;
 
-                // Yêu cầu nâng cấp 2: Xuất tuần tự makiot, ten, dvt và số lượng trưng bày
                 excelData.push(["makiot", "ten", "dvt", "Số lượng trưng bày"]);
                 for (let code in displayInventory) {
                     let info = productDict[code] || { name: "", unit: "" };
@@ -575,7 +641,216 @@
             XLSX.writeFile(workbook, finalFileName);
         }
 
-        // --- LƯU LỊCH SỬ PHIẾU KIỂM ---
+        // --- ĐỒNG BỘ DỮ LIỆU ĐẾM KỆ TRƯNG BÀY LÊN ĐÁM MÂY (TÍNH NĂNG MỚI) ---
+        function exportAndSyncDisplayV3() {
+            if (Object.keys(displayInventory).length === 0) { alert("Không có dữ liệu kiểm kê để xuất!"); return; }
+            
+            let timeStr = new Date().toLocaleString('vi-VN');
+            let timestamp = Date.now();
+            let finalFileName = prompt("NHẬP TÊN LÔ HÀNG ĐỂ ĐỒNG BỘ LÊN ĐÁM MÂY:", `File_Quet_${currentFolder}`);
+            if(!finalFileName) return;
+            finalFileName = finalFileName.trim();
+            if(finalFileName === "") finalFileName = `File_Quet_${currentFolder}`;
+            if(!finalFileName.toLowerCase().endsWith(".xlsx")) finalFileName += ".xlsx";
+
+            let arr = [["makiot", "ten", "dvt", "Số lượng trưng bày"]];
+            for(let code in displayInventory) {
+                let info = productDict[code] || { name: "", unit: "" };
+                arr.push([code, info.name, info.unit, displayInventory[code].scanned]);
+            }
+            const ws = XLSX.utils.aoa_to_sheet(arr); 
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Trung Bay");
+            XLSX.writeFile(wb, finalFileName);
+
+            if(isFirebaseReady) {
+                let packet = {
+                    meta: { fileName: finalFileName.replace(".xlsx", ""), date: timeStr, timestamp: timestamp },
+                    products: displayInventory
+                };
+                
+                database.ref(`trungbay_v3_data/${currentFolder}/${timestamp}`).set(packet, (error) => {
+                    if(!error) {
+                        alert(`🎉 Thành công!\n1. Đã lưu file báo cáo về điện thoại.\n2. Đã tự động tải đồng bộ lên Đám Mây vào cây thư mục [${currentFolder}].`);
+                        location.reload();
+                    } else {
+                        alert("Lỗi đường truyền mạng đám mây: " + error);
+                    }
+                });
+            } else {
+                alert("⚠️ Đã tải file Excel. Hệ thống chưa kết nối cơ sở dữ liệu Firebase nên không lưu trực tuyến được.");
+            }
+        }
+        // --- LOGIC ĐỒNG BỘ VÀ TẠO THƯ MỤC TRÊN TRANG TỔNG HỢP (TÍNH NĂNG MỚI) ---
+        function initFolderSync() {
+            const selectEl = document.getElementById('folder-select');
+            if(!selectEl) return;
+            if(isFirebaseReady) {
+                database.ref('trungbay_v3_folders').on('value', (snap) => {
+                    let folders = snap.val() || { "Chung": true };
+                    let currentVal = selectEl.value || "Chung";
+                    selectEl.innerHTML = "";
+                    for(let f in folders) {
+                        selectEl.innerHTML += `<option value="${f}">${f}</option>`;
+                    }
+                    if(folders[currentVal]) selectEl.value = currentVal;
+                });
+            } else {
+                selectEl.innerHTML = `<option value="Chung">Chung</option><option value="Kệ Sữa">Kệ Sữa</option><option value="Bánh Kẹo">Bánh Kẹo</option>`;
+            }
+        }
+
+        function createNewFolderFromCloud() {
+            let inputField = document.getElementById('new-folder-input');
+            let fName = inputField.value ? inputField.value.trim() : "";
+            if(!fName) return alert("Hãy nhập tên nhóm hàng / kệ tủ muốn tạo thư mục!");
+            
+            if(isFirebaseReady) {
+                database.ref('trungbay_v3_folders/' + fName).set(true)
+                    .then(() => {
+                        inputField.value = "";
+                        alert(`Đã khởi tạo thành công thư mục nhóm hàng độc lập: [${fName}]`);
+                    });
+            }
+        }
+
+        // --- SỬA/THÊM: TÍNH NĂNG THU GỌN VÀ NÚT XUẤT EXCEL TỔNG CHO THƯ MỤC TỔNG HỢP ---
+        function toggleCloudFolder(el) {
+            const body = el.nextElementSibling;
+            if (body.style.display === "none") {
+                body.style.display = "block";
+            } else {
+                body.style.display = "none";
+            }
+        }
+
+        function exportMasterExcelFromCloud(folderName) {
+            if (!window.lastCloudData || !window.lastCloudData[folderName]) {
+                alert("Thư mục này hiện chưa có file dữ liệu nào để gộp!");
+                return;
+            }
+            
+            let internalFiles = window.lastCloudData[folderName];
+            let combinedInventory = {};
+            
+            // Tiến hành gộp dữ liệu từ tất cả các file trong thư mục này lại thành một
+            for (let fileId in internalFiles) {
+                let prods = internalFiles[fileId].products || {};
+                for (let pCode in prods) {
+                    let qty = parseInt(prods[pCode].scanned) || 0;
+                    let name = prods[pCode].name || (productDict[pCode] ? productDict[pCode].name : "Không rõ");
+                    let unit = prods[pCode].unit || (productDict[pCode] ? productDict[pCode].unit : "");
+                    
+                    if (!combinedInventory[pCode]) {
+                        combinedInventory[pCode] = { name: name, unit: unit, scanned: 0 };
+                    }
+                    combinedInventory[pCode].scanned += qty;
+                }
+            }
+            
+            let excelData = [["makiot", "ten", "dvt", "Số lượng trưng bày tổng hợp"]];
+            for (let pCode in combinedInventory) {
+                excelData.push([
+                    pCode, 
+                    combinedInventory[pCode].name, 
+                    combinedInventory[pCode].unit, 
+                    combinedInventory[pCode].scanned
+                ]);
+            }
+            
+            if (excelData.length <= 1) {
+                alert("Không có sản phẩm nào để gộp xuất!");
+                return;
+            }
+            
+            const worksheet = XLSX.utils.aoa_to_sheet(excelData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Tổng Hợp Thư Mục");
+            
+            let now = new Date();
+            let timeSuffix = `${now.getFullYear()}${now.getMonth()+1}${now.getDate()}_${now.getHours()}${now.getMinutes()}`;
+            XLSX.writeFile(workbook, `Excel_Tong_Hop_${folderName.replace(/[^a-zA-Z0-9]/g, "_")}_${timeSuffix}.xlsx`);
+        }
+
+        function loadCloudStructureV3() {
+            const containerRoot = document.getElementById('cloud-folder-root-list');
+            if(!containerRoot) return;
+            if(!isFirebaseReady) {
+                containerRoot.innerHTML = "<p style='color:#dc3545; font-weight:bold;'>⚠️ Trang tổng hợp trống do chưa liên kết hệ thống cơ sở dữ liệu trực tuyến Firebase.</p>";
+                return;
+            }
+
+            containerRoot.innerHTML = "<p style='color:#666; font-style:italic;'>Đang đồng bộ sơ đồ cây thư mục và cấu trúc file...</p>";
+            
+            database.ref('trungbay_v3_data').on('value', (snapCloud) => {
+                let actualData = snapCloud.val() || {};
+                window.lastCloudData = actualData; // Lưu tạm dữ liệu đám mây vào cửa sổ hệ thống để phục vụ hàm xuất gộp Excel
+                
+                database.ref('trungbay_v3_folders').once('value', (snapFolders) => {
+                    let foldersList = snapFolders.val() || { "Chung": true };
+                    let masterHtml = "";
+
+                    for(let fKey in foldersList) {
+                        masterHtml += `<div class="folder-block">`;
+                        // Thêm sự kiện onclick vào header để thu gọn/mở rộng và nút bấm xuất Excel Tổng hợp nhóm
+                        masterHtml += `
+                        <div class="folder-header" onclick="toggleCloudFolder(this)" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
+                            <span>📂 Thư mục: ${fKey}</span>
+                            <div style="display: flex; gap: 8px; align-items: center;" onclick="event.stopPropagation();">
+                                <button onclick="exportMasterExcelFromCloud('${fKey}')" style="width: auto; padding: 5px 12px; font-size: 11px; margin: 0; background-color: #217346; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;">📊 XUẤT EXCEL TỔNG</button>
+                                <span style="font-size:12px; font-weight:normal; background:#007bff; color:white; padding:4px 8px; border-radius:10px; white-space: nowrap;">Nhóm hàng</span>
+                            </div>
+                        </div>`;
+                        masterHtml += `<div class="folder-body" style="display: block;">`;
+
+                        let internalFiles = actualData[fKey];
+                        if(internalFiles) {
+                            for(let fileId in internalFiles) {
+                                let fContent = internalFiles[fileId];
+                                let meta = fContent.meta || { fileName: "File không tên", date: "Không rõ thời gian" };
+                                let prods = fContent.products || {};
+                                let totalUnique = Object.keys(prods).length;
+
+                                masterHtml += `
+                                <div class="file-item-cloud">
+                                    <div style="font-weight: bold; color: #333; font-size:14px; padding-right: 5px;">📄 ${meta.fileName}</div>
+                                    <div style="font-size:11px; color:#666; margin-top:3px;">Ngày xuất đồng bộ: ${meta.date} | Quy mô: ${totalUnique} mặt hàng</div>
+                                    <button class="delete-file-btn" onclick="deleteFileFromCloudFolder('${fKey}', '${fileId}')">XÓA FILE</button>
+                                    
+                                    <table style="margin-top: 8px; background: #fff;">
+                                        <thead>
+                                            <tr><th>Mã Hàng</th><th>Tên Sản Phẩm</th><th>Số Lượng</th></tr>
+                                        </thead>
+                                        <tbody>`;
+                                        for(let pCode in prods) {
+                                            masterHtml += `<tr>
+                                                <td>${pCode}</td>
+                                                <td>${prods[pCode].name || (productDict[pCode] ? productDict[pCode].name : "Không rõ")}</td>
+                                                <td><b style="color:#6f42c1;">${prods[pCode].scanned}</b> ${prods[pCode].unit || (productDict[pCode] ? productDict[pCode].unit : '')}</td>
+                                            </tr>`;
+                                        }
+                                masterHtml += `</tbody></table></div>`;
+                            }
+                        } else {
+                            masterHtml += `<p style="color:#aaa; font-size:12px; margin:5px 0; font-style:italic;">Thư mục này hiện tại chưa có file/lô dữ liệu nào được đẩy lên.</p>`;
+                        }
+
+                        masterHtml += `</div></div>`;
+                    }
+                    containerRoot.innerHTML = masterHtml;
+                });
+            });
+        }
+
+        function deleteFileFromCloudFolder(folderName, fileId) {
+            if(confirm(`[CẢNH BÁO] Bạn có chắc muốn xóa vĩnh viễn file này ra khỏi Thư mục [${folderName}] trên trang tổng không?`)) {
+                database.ref(`trungbay_v3_data/${folderName}/${fileId}`).remove()
+                    .then(() => alert("Đã xóa file khỏi đám mây."))
+                    .catch(err => alert("Lỗi xóa: " + err));
+            }
+        }
+
+        // --- CÁC TÍNH NĂNG LƯU TRỮ LỊCH SỬ PHIẾU GIỮ NGUYÊN KHÔNG ĐỔI ---
         function saveTicket() {
             let hist = JSON.parse(localStorage.getItem('scanTickets') || "[]");
             hist.push({ id: "LUU_" + Date.now(), date: new Date().toLocaleString('vi-VN'), data: inventory });
@@ -597,6 +872,11 @@
         }
         function deleteSingleTicket(id, e) { e.stopPropagation(); if(confirm("Xoá?")) { let hist = JSON.parse(localStorage.getItem('scanTickets')||"[]").filter(t=>t.id!==id); localStorage.setItem('scanTickets', JSON.stringify(hist)); showHistory(); } }
         function backToHistory() { document.getElementById('detail-section').style.display = 'none'; document.getElementById('history-section').style.display = 'block'; }
+
+        // Khởi chạy hệ thống đám mây ngay khi mở ứng dụng
+        initFirebaseSystem();
     </script>
 </body>
 </html>
+
+
