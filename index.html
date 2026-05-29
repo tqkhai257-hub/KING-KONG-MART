@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kiểm Hàng Pro - Quản Lý & Trưng Bày</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; padding: 10px; padding-bottom: 90px; background-color: #f0f2f5; }
+        .card { background: white; padding: 15px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h2 { margin-top: 0; font-size: 18px; color: #1c1e21; }
+        input, button, select { width: 100%; padding: 12px; margin-top: 8px; border-radius: 8px; border: 1px solid #ddd; box-sizing: border-box; font-size: 16px; }
+        button { background-color: #007bff; color: white; border: none; font-weight: bold; cursor: pointer; }
+        #current-scan-info { display: block; background: #28a745; color: white; padding: 10px; border-radius: 8px; margin-top: 10px; font-weight: bold; text-align: center; }
+        #camera-wrapper { position: relative; margin-top: 10px; }
+        #reader { width: 100%; border-radius: 12px; overflow: hidden; background: #000; min-height: 250px; }
+        #toast-container { position: absolute; top: 10px; left: 10px; right: 10px; z-index: 999; display: flex; flex-direction: column; gap: 5px; pointer-events: none; }
+        .toast { padding: 8px 12px; border-radius: 8px; background: white; color: black; box-shadow: 0 4px 8px rgba(0,0,0,0.4); border-left: 5px solid #007bff; position: relative; font-size: 14px; pointer-events: auto; }
+        .status-ok { border-left-color: #28a745; } .status-warn { border-left-color: #ffc107; } .status-error { border-left-color: #dc3545; background: #ffe6e6; }
+        .btn-success { background-color: #28a745; } .btn-warning { background-color: #ffc107; color: black; } .btn-info { background-color: #17a2b8; } .btn-danger { background-color: #dc3545; } .btn-secondary { background-color: #6c757d; } .btn-purple { background-color: #6f42c1; }
+        .hsd-mini-box { background: #f8f9fa; padding: 12px; border-radius: 10px; margin-top: 10px; border: 2px solid #dee2e6; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        
+        /* Floating Buttons Container */
+        #fab-container { position: fixed; right: 20px; bottom: 95px; display: flex; flex-direction: column; gap: 10px; z-index: 999; }
+        .fab-btn { width: 55px; height: 55px; border-radius: 50%; color: white; font-size: 22px; box-shadow: 0 4px 10px rgba(0,0,0,0.4); border: 2px solid white; display: flex; justify-content: center; align-items: center; cursor: pointer; padding: 0; }
+        
+        .ticket-item { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #eee; } .ticket-item input { width: 20px; margin: 0 10px 0 0; }
+        .history-item { padding: 15px; border: 1px solid #ddd; border-radius: 10px; margin-bottom: 10px; background: #fff; cursor: pointer; position: relative;}
+        .delete-btn-small { position: absolute; right: 10px; bottom: 10px; background: #ff4d4d; color: white; padding: 5px 10px; border-radius: 6px; font-size: 12px; font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; } table th, table td { border: 1px solid #ddd; padding: 8px; text-align: left; } table th { background-color: #f2f2f2; }
+        .scan-time { position: absolute; right: 10px; top: 10px; font-size: 11px; color: #555; font-weight: bold; }
+        
+        /* Navigation Bar (Facebook/YouTube Style) */
+        .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; background: white; display: flex; justify-content: space-around; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); padding: 6px 0; z-index: 1000; padding-bottom: env(safe-area-inset-bottom, 6px); }
+        .nav-item { text-align: center; font-size: 13px; color: #6c757d; flex: 1; padding: 6px 0; cursor: pointer; font-weight: bold; transition: all 0.2s; border-radius: 8px; margin: 0 5px; }
+        .nav-item.active { color: #007bff; background-color: #e6f2ff; }
+        .nav-icon { font-size: 20px; display: block; margin-bottom: 2px; }
+
+        /* Modal Popup Sửa Số Lượng Trưng Bày */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 10001; padding: 15px; box-sizing: border-box; align-items: center; justify-content: center; }
+        .modal-content { background: white; padding: 20px; border-radius: 12px; width: 100%; max-height: 80vh; overflow-y: auto; box-sizing: border-box; }
+        .modal-item { padding: 10px 0; border-bottom: 1px solid #eee; }
+    </style>
+</head>
+<body>
+
+    <nav class="bottom-nav">
+        <div id="nav-kiemhang" class="nav-item active" onclick="switchTab('kiem_hang')">
+            <span class="nav-icon">📦</span> Kiểm Phiếu
+        </div>
+        <div id="nav-trungbay" class="nav-item" onclick="switchTab('trung_bay')">
+            <span class="nav-icon">🏪</span> Trưng Bày
+        </div>
+    </nav>
+
+    <div id="tab-kiemhang-container" class="tab-content">
+        <div class="card" id="import-section">
+            <h2>1. Nhập mẫu hàng (Kiểm Phiếu)</h2>
+            <input type="file" id="excel-file" accept=".xlsx, .xls, .csv" />
+            <button onclick="processFile()">TIẾP TỤC CHỌN PHIẾU</button>
+            <button class="btn-warning" onclick="showHistory()" style="margin-top: 10px;">XEM LỊCH SỬ PHIẾU</button>
+        </div>
+    </div>
+
+    <div id="tab-trungbay-container" class="tab-content" style="display: none;">
+        <div class="card" id="import-master-section">
+            <h2>1. Nhập danh mục hàng trưng bày</h2>
+            <p style="font-size: 13px; color: #666; margin-top: 0;">Tải lên file dữ liệu có chứa các cột: <b>makiot</b>, <b>ten</b>, <b>dvt</b> để hiển thị thông tin sản phẩm khi quét.</p>
+            <input type="file" id="master-file" accept=".xlsx, .xls, .csv" />
+            <button class="btn-purple" onclick="loadMasterDataAndStart()">🚀 TẢI DANH MỤC & BẮT ĐẦU QUÉT</button>
+        </div>
+    </div>
+
+    <div class="card" id="ticket-selection-section" style="display:none;">
+        <h2>Chọn Mã Phiếu cần quét</h2>
+        <div id="ticket-list" style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 10px;"></div>
+        <button class="btn-success" onclick="startScanningWithTickets()">BẮT ĐẦU QUÉT PHIẾU ĐÃ CHỌN</button>
+        <button class="btn-secondary" onclick="location.reload()" style="margin-top:8px;">HỦY</button>
+    </div>
+
+    <div id="scan-section" style="display:none; padding-bottom: 40px;">
+        <div id="current-scan-info">
+            <div id="ticket-info-bar" style="font-size: 12px; margin-bottom: 5px; border-bottom: 1px dashed rgba(255,255,255,0.5); padding-bottom: 5px;">ĐANG QUÉT: <span id="cur-ticket">---</span></div>
+            <div style="display: flex; justify-content: space-around; margin: 8px 0;">
+                <div>MÃ: <br><span id="cur-code">---</span> <span id="cur-unit" style="font-size:12px; color:#ffeb3b;"></span></div>
+                <div id="expected-box">CẦN: <br><span id="cur-expected">0</span></div>
+                <div id="received-box">NHẬN: <br><span id="cur-received">0</span></div>
+            </div>
+            <div style="font-size: 14px; margin-top: 5px; border-top: 1px dashed rgba(255,255,255,0.5); padding-top: 5px; color: #ffeb3b;"><span id="cur-name">Tên sản phẩm</span></div>
+        </div>
+        
+        <div id="camera-wrapper">
+            <div id="toast-container"></div>
+            <div id="reader"></div>
+        </div>
+        
+        <div class="hsd-mini-box" id="hsd-camera-tools">
+            <div class="grid-2">
+                <div><small>NSX:</small><input type="date" id="nsx-input" style="padding:5px;"></div>
+                <div><small>HSD:</small><input type="date" id="hsd-input" style="padding:5px;"></div>
+            </div>
+            <div class="grid-2" style="margin-top: 10px;">
+                <button class="btn-info" onclick="calculateHSD()">TÍNH %</button>
+                <button onclick="takeScreenshotCamera()" class="btn-danger">📸 CHỤP LỖI</button>
+            </div>
+            <div id="hsd-result" style="margin-top:8px; text-align:center; font-weight:bold;"></div>
+        </div>
+
+        <div id="fab-container">
+            <button id="edit-display-btn" class="fab-btn btn-purple" onclick="openEditDisplayModal()" style="display: none;" title="Sửa số lượng trưng bày">✏️</button>
+            <button id="manual-qty-btn" class="fab-btn" style="background: #fd7e14;" onclick="addManualQty()" title="Nhập mã thủ công">+✍️</button>
+        </div>
+
+        <button id="finish-btn" onclick="finishScan()" class="btn-success" style="margin-top: 15px; font-size: 18px;">XEM TỔNG KẾT</button>
+    </div>
+
+    <div id="result-section" class="card" style="display:none;">
+        <h2 id="result-title">Kết quả đối soát</h2>
+        <div id="result-list"></div>
+        <button onclick="exportToExcel()" class="btn-info" style="margin-top: 15px; background-color: #117a8b;">📊 XUẤT FILE EXCEL</button>
+        <button id="save-ticket-btn" onclick="saveTicket()" class="btn-success" style="margin-top: 10px;">HOÀN THÀNH & LƯU</button>
+        <button onclick="location.reload()" class="btn-secondary" style="margin-top:10px;">BỎ QUA / TRANG CHỦ</button>
+    </div>
+
+    <div id="history-section" class="card" style="display:none;">
+        <h2>Lịch sử phiếu</h2>
+        <div id="history-list"></div>
+        <button onclick="location.reload()" class="btn-secondary">QUAY LẠI</button>
+    </div>
+    <div id="detail-section" class="card" style="display:none;">
+        <h2 id="detail-title">Chi tiết</h2>
+        <div id="detail-content"></div>
+        <button onclick="backToHistory()" class="btn-secondary">QUAY LẠI</button>
+    </div>
+
+    <div id="edit-display-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h3 style="margin-top: 0; color: #6f42c1;">✏️ Danh sách sửa số lượng trưng bày</h3>
+            <div id="edit-display-list" style="max-height: 50vh; overflow-y: auto; margin-bottom: 15px;"></div>
+            <button class="btn-success" onclick="saveEditDisplayData()">LƯU THAY ĐỔI</button>
+            <button class="btn-secondary" onclick="closeEditDisplayModal()" style="margin-top: 8px;">HỦY BỎ</button>
+        </div>
+    </div>
+
+    <script>
+        let fullData = [], inventory = {}, displayInventory = {}, productDict = {}; 
+        let scanMode = 'kiem_hang'; 
+        let html5QrCode, isPaused = false, lastScannedCode = null, lastHSDValue = "N/A";
+        let idxTicket = 0, idxCode = 16, idxName = 17, idxUnit = 18, idxQty = 21, headerIndex = 0;
+
+        // --- HÀM CHUYỂN ĐỔI TAB (GIAO DIỆN FACEBOOK/YOUTUBE STYLE) ---
+        function switchTab(tab) {
+            scanMode = tab;
+            if(html5QrCode) {
+                try { html5QrCode.stop(); } catch(e) {}
+                html5QrCode = null;
+            }
+            isPaused = false;
+            
+            // Ẩn toàn bộ giao diện chính
+            document.getElementById('tab-kiemhang-container').style.display = 'none';
+            document.getElementById('tab-trungbay-container').style.display = 'none';
+            document.getElementById('ticket-selection-section').style.display = 'none';
+            document.getElementById('scan-section').style.display = 'none';
+            document.getElementById('result-section').style.display = 'none';
+            document.getElementById('history-section').style.display = 'none';
+            document.getElementById('detail-section').style.display = 'none';
+            
+            // Đổi trạng thái nút bấm trên Navigation Bar
+            document.getElementById('nav-kiemhang').className = (tab === 'kiem_hang') ? 'nav-item active' : 'nav-item';
+            document.getElementById('nav-trungbay').className = (tab === 'trung_bay') ? 'nav-item active' : 'nav-item';
+            
+            // Hiển thị tab tương ứng
+            if(tab === 'kiem_hang') {
+                document.getElementById('tab-kiemhang-container').style.display = 'block';
+            } else {
+                document.getElementById('tab-trungbay-container').style.display = 'block';
+            }
+        }
+
+        // --- XỬ LÝ FILE ĐỐI SOÁT PHIẾU KIỂM ---
+        function processFile() {
+            const fileInput = document.getElementById('excel-file').files[0];
+            if (!fileInput) { alert("Vui lòng chọn file trước!"); return; }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const workbook = XLSX.read(new Uint8Array(e.target.result), {type: 'array'});
+                const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], {header: 1});
+                fullData = jsonData;
+                for(let r = 0; r < Math.min(10, fullData.length); r++) {
+                    let rowStr = (fullData[r] || []).join("").toLowerCase();
+                    if(rowStr.includes("mã hàng") || rowStr.includes("tên hàng")) {
+                        headerIndex = r; let hRow = fullData[r];
+                        for(let c = 0; c < hRow.length; c++) {
+                            let hText = (hRow[c] || "").toString().toLowerCase().trim();
+                            if(hText === "mã" || hText === "mã phiếu") idxTicket = c;
+                            else if(hText === "mã hàng" || hText === "mã sản phẩm") idxCode = c;
+                            else if(hText === "tên hàng" || hText === "tên sản phẩm") idxName = c;
+                            else if(hText === "đơn vị tính" || hText === "đvt") idxUnit = c;
+                            else if(hText === "số lượng chuyển" || hText === "số lượng giao" || hText === "sl chuyển") idxQty = c;
+                        }
+                        break;
+                    }
+                }
+                const tickets = [...new Set(jsonData.slice(headerIndex + 1).map(row => row[idxTicket] ? row[idxTicket].toString().trim() : null).filter(x => x))];
+                if(tickets.length === 0) { alert("Không tìm thấy mã phiếu!"); return; }
+                document.getElementById('tab-kiemhang-container').style.display = 'none';
+                document.getElementById('ticket-selection-section').style.display = 'block';
+                document.getElementById('ticket-list').innerHTML = tickets.map(t => `<div class="ticket-item"><input type="checkbox" name="ticket-cb" value="${t}" checked><span>Mã Phiếu: ${t}</span></div>`).join('');
+            };
+            reader.readAsArrayBuffer(fileInput);
+        }
+
+        function startScanningWithTickets() {
+            scanMode = 'kiem_hang';
+            const selected = Array.from(document.querySelectorAll('input[name="ticket-cb"]:checked')).map(cb => cb.value);
+            if(selected.length === 0) { alert("Bạn phải chọn ít nhất 1 phiếu!"); return; }
+            inventory = {}; let totalItemsCount = 0;
+            for(let i = headerIndex + 1; i < fullData.length; i++) {
+                let row = fullData[i]; if (!row || row.length === 0) continue;
+                let tId = row[idxTicket] ? row[idxTicket].toString().trim() : null;
+                if(tId && selected.includes(tId)) {
+                    let code = row[idxCode] ? row[idxCode].toString().trim() : null;
+                    if(code) {
+                        let expectedValue = parseFloat(row[idxQty]) || 0;
+                        if(!inventory[code]) inventory[code] = { expected: expectedValue, scanned: 0, logs: [], ticketId: tId, name: row[idxName] || "N/A", unit: row[idxUnit] || "" };
+                        else inventory[code].expected += expectedValue;
+                        totalItemsCount++;
+                    }
+                }
+            }
+            if(totalItemsCount === 0) { alert("Phiếu trống!"); return; }
+            
+            // Thiết lập giao diện quét kiểm phiếu
+            document.getElementById('expected-box').style.display = 'block';
+            document.getElementById('ticket-info-bar').style.display = 'block';
+            document.getElementById('edit-display-btn').style.display = 'none';
+            document.getElementById('received-box').innerHTML = 'NHẬN: <br><span id="cur-received">0</span>';
+            document.getElementById('finish-btn').innerText = `XEM TỔNG KẾT (${Object.keys(inventory).length} SP)`;
+            document.getElementById('current-scan-info').style.background = '#28a745';
+            
+            document.getElementById('ticket-selection-section').style.display = 'none';
+            document.getElementById('scan-section').style.display = 'block';
+            startScanner();
+        }
+
+        // --- XỬ LÝ ĐỌC DANH MỤC FILE TRƯNG BÀY (Yêu cầu nâng cấp 2) ---
+        function loadMasterDataAndStart() {
+            const fileInput = document.getElementById('master-file').files[0];
+            productDict = {}; 
+            displayInventory = {}; 
+
+            if (!fileInput) {
+                if(confirm("Bạn chưa chọn file danh mục. Hệ thống sẽ không hiển thị được Tên và ĐVT sản phẩm. Bạn có muốn tiếp tục quét không?")) {
+                    startDisplayScanMode();
+                }
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const workbook = XLSX.read(new Uint8Array(e.target.result), {type: 'array'});
+                const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], {header: 1});
+
+                let iMakiot = -1, iTen = -1, iDvt = -1;
+                // Dò tìm tiêu đề chứa cột makiot, ten, dvt
+                for(let r = 0; r < Math.min(15, jsonData.length); r++) {
+                    let rowStr = (jsonData[r] || []).join("").toLowerCase();
+                    if(rowStr.includes("makiot") || rowStr.includes("ten") || rowStr.includes("tên")) {
+                        let hRow = jsonData[r];
+                        for(let c = 0; c < hRow.length; c++) {
+                            let hText = (hRow[c] || "").toString().toLowerCase().trim();
+                            if(hText === "makiot" || hText === "mã sản phẩm" || hText === "mã hàng") iMakiot = c;
+                            else if(hText === "ten" || hText === "tên" || hText === "tên sản phẩm" || hText === "tên hàng") iTen = c;
+                            else if(hText === "dvt" || hText === "đvt" || hText === "đơn vị tính") iDvt = c;
+                        }
+                        break;
+                    }
+                }
+
+                // Nếu không quét được dòng header cụ thể, dùng dòng đầu tiên làm mặc định để dự đoán
+                if(iMakiot === -1) {
+                    let firstRow = jsonData[0] || [];
+                    for(let c = 0; c < firstRow.length; c++) {
+                        let txt = (firstRow[c]||"").toString().toLowerCase().trim();
+                        if(txt.includes("makiot")) iMakiot = c;
+                        if(txt.includes("ten") || txt.includes("tên")) iTen = c;
+                        if(txt.includes("dvt") || txt.includes("đvt")) iDvt = c;
+                    }
+                }
+
+                if(iMakiot === -1) {
+                    alert("Không tìm thấy tiêu đề cột 'makiot' trong file của bạn. Vui lòng kiểm tra lại file.");
+                    return;
+                }
+
+                // Nạp toàn bộ dữ liệu vào Dictionary
+                let loadedCount = 0;
+                for(let i = 0; i < jsonData.length; i++) {
+                    let row = jsonData[i];
+                    if(!row || !row[iMakiot]) continue;
+                    let code = row[iMakiot].toString().trim();
+                    if(code === "makiot" || code === "") continue;
+                    
+                    let name = iTen !== -1 && row[iTen] ? row[iTen].toString().trim() : "Không rõ tên";
+                    let unit = iDvt !== -1 && row[iDvt] ? row[iDvt].toString().trim() : "";
+                    productDict[code] = { name: name, unit: unit };
+                    loadedCount++;
+                }
+
+                alert(`Đã nạp thành công dữ liệu từ file: ${loadedCount} sản phẩm!`);
+                startDisplayScanMode();
+            };
+            reader.readAsArrayBuffer(fileInput);
+        }
+
+        function startDisplayScanMode() {
+            scanMode = 'trung_bay';
+            document.getElementById('expected-box').style.display = 'none';
+            document.getElementById('ticket-info-bar').style.display = 'none';
+            document.getElementById('edit-display-btn').style.display = 'flex'; // Hiện nút sửa số lượng trưng bày
+            document.getElementById('received-box').innerHTML = 'ĐÃ LƯU: <br><span id="cur-received">0</span>';
+            document.getElementById('finish-btn').innerText = "KẾT THÚC & XUẤT FILE";
+            document.getElementById('current-scan-info').style.background = '#6f42c1'; 
+            document.getElementById('cur-name').innerText = "Đang quét hàng trưng bày...";
+            
+            document.getElementById('tab-trungbay-container').style.display = 'none';
+            document.getElementById('scan-section').style.display = 'block';
+            startScanner();
+        }
+
+        // --- QUÉT MÃ VÀ NHẬN DIỆN THÔNG TIN ---
+        function handleDisplayScan(code) {
+            if(navigator.vibrate) navigator.vibrate(100);
+            
+            // Lấy thông tin từ file đã đọc hiểu ở trên (Yêu cầu nâng cấp 2)
+            let itemInfo = productDict[code] || { name: "Mã lạ (Không có trong danh mục file)", unit: "" };
+            
+            let qtyStr = prompt(`Quét thành công mã: ${code}\nTên: ${itemInfo.name}\nĐVT: ${itemInfo.unit}\n\nNhập số lượng trưng bày:`, "1");
+            if (qtyStr !== null && qtyStr.trim() !== "") {
+                let qty = parseInt(qtyStr);
+                if (!isNaN(qty) && qty >= 0) {
+                    if (!displayInventory[code]) displayInventory[code] = { scanned: 0 };
+                    displayInventory[code].scanned += qty;
+                    
+                    // Hiển thị trực quan lên màn hình app
+                    document.getElementById('cur-code').innerText = code;
+                    document.getElementById('cur-received').innerText = displayInventory[code].scanned;
+                    document.getElementById('cur-name').innerText = itemInfo.name;
+                    document.getElementById('cur-unit').innerText = itemInfo.unit ? `(${itemInfo.unit})` : "";
+                    
+                    pushToast(code, new Date().toLocaleTimeString(), {expected: 'OK'}, `Đã thêm ${qty} (Tổng: ${displayInventory[code].scanned})`);
+                } else { alert("Số lượng nhập không hợp lệ!"); }
+            }
+            setTimeout(() => { isPaused = false; }, 1000);
+        }
+
+        async function startScanner() {
+            html5QrCode = new Html5Qrcode("reader");
+            try { await html5QrCode.start({ facingMode: "environment" }, { fps: 20, qrbox: { width: 250, height: 250 } }, onScanSuccess); } 
+            catch (err) { alert("Lỗi mở camera: " + err); }
+        }
+
+        function onScanSuccess(decodedText) {
+            if (isPaused) return; isPaused = true;
+            let code = decodedText.trim(); if (code.startsWith("]")) code = code.replace(/^\][A-Za-z0-9]{2}/, ""); 
+            const timeStr = new Date().toLocaleTimeString(); lastScannedCode = code;
+
+            if (scanMode === 'kiem_hang') {
+                if (!inventory[code]) {
+                    pushToast(code, timeStr, {expected:'X', scanned:'X'}, "Mã KHÔNG nằm trong phiếu!");
+                    if(navigator.vibrate) navigator.vibrate([200, 100, 200]);
+                    setTimeout(() => { isPaused = false; }, 2000); return;
+                }
+                inventory[code].scanned++;
+                inventory[code].logs.push({ time: timeStr, hsd: lastHSDValue });
+                document.getElementById('cur-code').innerText = code;
+                document.getElementById('cur-expected').innerText = inventory[code].expected;
+                document.getElementById('cur-received').innerText = inventory[code].scanned;
+                document.getElementById('cur-ticket').innerText = inventory[code].ticketId;
+                document.getElementById('cur-name').innerText = inventory[code].name;
+                document.getElementById('cur-unit').innerText = inventory[code].unit ? `(${inventory[code].unit})` : "";
+                pushToast(code, timeStr, inventory[code], "Đã quét +1");
+                if(navigator.vibrate) navigator.vibrate(100);
+                setTimeout(() => { isPaused = false; }, 1200);
+            } else if (scanMode === 'trung_bay') { 
+                handleDisplayScan(code); 
+            }
+        }
+
+        function pushToast(code, time, data, msg) {
+            const container = document.getElementById('toast-container');
+            let status = (scanMode === 'kiem_hang' && data.expected === 'X') ? "status-error" : (scanMode === 'kiem_hang' && data.scanned > data.expected ? "status-warn" : "status-ok");
+            const toast = document.createElement('div'); toast.className = `toast ${status}`;
+            toast.innerHTML = `<span class="scan-time">${time}</span><b>${code}</b><br><small>${msg}</small>`;
+            container.insertBefore(toast, container.firstChild);
+            if (container.childNodes.length > 3) container.removeChild(container.lastChild);
+        }
+
+        // --- THÊM MÃ BẰNG TAY CHO CẢ KIỂM HÀNG VÀ TRƯNG BÀY (Yêu cầu nâng cấp 3) ---
+        function addManualQty() {
+            let defaultCode = lastScannedCode || "";
+            let targetCode = prompt("NHẬP MÃ SẢN PHẨM KHÔNG QUÉT ĐƯỢC:", defaultCode);
+            if (targetCode !== null && targetCode.trim() !== "") {
+                targetCode = targetCode.trim();
+                
+                if (scanMode === 'kiem_hang') {
+                    let isNewCode = (targetCode !== lastScannedCode);
+                    let input = prompt(isNewCode ? "Nhập SỐ LƯỢNG cộng thêm:" : "Nhập TỔNG SỐ LƯỢNG lốc/hộp:", "");
+                    if (input !== null && input.trim() !== "") {
+                        let qty = parseInt(input);
+                        if (!isNaN(qty)) {
+                            let extra = isNewCode ? qty : (qty - 1);
+                            if (extra > 0) {
+                                if (!inventory[targetCode]) inventory[targetCode] = { expected: 0, scanned: 0, logs: [], ticketId: "---", name: "SP Ngoại lai", unit: "" };
+                                inventory[targetCode].scanned += extra;
+                                document.getElementById('cur-code').innerText = targetCode;
+                                document.getElementById('cur-expected').innerText = inventory[targetCode].expected;
+                                document.getElementById('cur-received').innerText = inventory[targetCode].scanned;
+                                pushToast(targetCode, new Date().toLocaleTimeString(), inventory[targetCode], `Đã cộng thêm: +${extra}`);
+                                lastScannedCode = targetCode;
+                            }
+                        }
+                    }
+                } else if (scanMode === 'trung_bay') {
+                    // Xử lý thêm mã bằng tay cho phần hàng trưng bày
+                    let itemInfo = productDict[targetCode] || { name: "Mã lạ (Không có trong danh mục file)", unit: "" };
+                    let input = prompt(`Mã thủ công: ${targetCode}\nTên: ${itemInfo.name}\nNhập số lượng trưng bày cần cộng thêm:`, "1");
+                    if (input !== null && input.trim() !== "") {
+                        let qty = parseInt(input);
+                        if (!isNaN(qty) && qty > 0) {
+                            if (!displayInventory[targetCode]) displayInventory[targetCode] = { scanned: 0 };
+                            displayInventory[targetCode].scanned += qty;
+                            
+                            document.getElementById('cur-code').innerText = targetCode;
+                            document.getElementById('cur-received').innerText = displayInventory[targetCode].scanned;
+                            document.getElementById('cur-name').innerText = itemInfo.name;
+                            document.getElementById('cur-unit').innerText = itemInfo.unit ? `(${itemInfo.unit})` : "";
+                            
+                            pushToast(targetCode, new Date().toLocaleTimeString(), {expected: 'OK'}, `Đã thêm tay +${qty} (Tổng: ${displayInventory[targetCode].scanned})`);
+                            lastScannedCode = targetCode;
+                        } else { alert("Số lượng nhập không hợp lệ!"); }
+                    }
+                }
+            }
+        }
+
+        // --- DANH SÁCH VÀ CHỨC NĂNG SỬA LẠI SỐ LƯỢNG ĐÃ QUÉT (Yêu cầu nâng cấp 4) ---
+        function openEditDisplayModal() {
+            let keys = Object.keys(displayInventory);
+            if(keys.length === 0) {
+                alert("Chưa có sản phẩm nào trong danh sách quét trưng bày để chỉnh sửa!");
+                return;
+            }
+            
+            let htmlContent = "";
+            for(let i = 0; i < keys.length; i++) {
+                let code = keys[i];
+                let qty = displayInventory[code].scanned;
+                let info = productDict[code] || { name: "Không nằm trong danh mục", unit: "" };
+                
+                htmlContent += `
+                <div class="modal-item">
+                    <div style="font-weight: bold; color: #6f42c1;">Mã: ${code}</div>
+                    <div style="font-size: 13px; color: #555;">${info.name} ${info.unit ? '['+info.unit+']' : ''}</div>
+                    <div style="margin-top: 5px; display: flex; align-items: center; gap: 10px;">
+                        <span>Số lượng trưng bày:</span>
+                        <input type="number" id="mod-qty-${code}" value="${qty}" style="width: 90px; padding: 6px; margin-top: 0; font-size: 14px; border: 1px solid #6f42c1;">
+                    </div>
+                </div>`;
+            }
+            
+            document.getElementById('edit-display-list').innerHTML = htmlContent;
+            document.getElementById('edit-display-modal').style.display = 'flex';
+        }
+
+        function saveEditDisplayData() {
+            let keys = Object.keys(displayInventory);
+            for(let i = 0; i < keys.length; i++) {
+                let code = keys[i];
+                let inputEl = document.getElementById(`mod-qty-${code}`);
+                if(inputEl) {
+                    let newVal = parseInt(inputEl.value);
+                    if(!isNaN(newVal) && newVal >= 0) {
+                        displayInventory[code].scanned = newVal;
+                    }
+                }
+            }
+            if(lastScannedCode && displayInventory[lastScannedCode]) {
+                document.getElementById('cur-received').innerText = displayInventory[lastScannedCode].scanned;
+            }
+            closeEditDisplayModal();
+            alert("Đã cập nhật lại toàn bộ số lượng thay đổi!");
+        }
+
+        function closeEditDisplayModal() {
+            document.getElementById('edit-display-modal').style.display = 'none';
+        }
+
+        // --- CÁC TÍNH NĂNG KHÁC GIỮ NGUYÊN KHÔNG THAY ĐỔI ---
+        function calculateHSD() {
+            const nsx = new Date(document.getElementById('nsx-input').value).getTime(), hsd = new Date(document.getElementById('hsd-input').value).getTime(), today = new Date().getTime();
+            if (!nsx || !hsd) return; const pc = ((hsd - today) / (hsd - nsx)) * 100;
+            lastHSDValue = pc < 0 ? "Hết hạn" : pc.toFixed(1) + "%";
+            document.getElementById('hsd-result').innerHTML = `DATE: ${lastHSDValue}`;
+        }
+
+        function takeScreenshotCamera() {
+            const video = document.querySelector('video'); if (!video) return;
+            const canvas = document.createElement('canvas'); canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            const link = document.createElement('a'); link.download = `Loi_${Date.now()}.png`; link.href = canvas.toDataURL(); link.click();
+        }
+
+        function finishScan() {
+            if(html5QrCode) html5QrCode.stop();
+            document.getElementById('scan-section').style.display = 'none';
+            document.getElementById('result-section').style.display = 'block';
+            const list = document.getElementById('result-list');
+            if (scanMode === 'kiem_hang') {
+                document.getElementById('result-title').innerText = "Kết quả đối soát"; document.getElementById('save-ticket-btn').style.display = 'inline-block';
+                const sortedCodes = Object.keys(inventory).sort((a, b) => (inventory[a].scanned - inventory[a].expected) - (inventory[b].scanned - inventory[b].expected));
+                list.innerHTML = sortedCodes.map(code => {
+                    const item = inventory[code]; const diff = item.scanned - item.expected;
+                    return `<div style="padding:10px; border-bottom:1px solid #eee; color:${diff < 0 ? 'orange' : (diff > 0 ? 'red' : 'green')}; background:${diff < 0 ? '#fff9f0' : 'none'}"><b>${diff < 0 ? '⚠️ THIẾU' : (diff > 0 ? '❌ THỪA' : '✅ OK')} - ${code}</b><br><small>${item.name}</small><br>Giao: ${item.expected} | Nhận: ${item.scanned}</div>`;
+                }).join('');
+            } else {
+                document.getElementById('result-title').innerText = "Danh Sách Hàng Trưng Bày"; document.getElementById('save-ticket-btn').style.display = 'none'; 
+                list.innerHTML = Object.keys(displayInventory).map(code => {
+                    let info = productDict[code] || { name: "Không rõ tên", unit: "" };
+                    return `<div style="padding:10px; border-bottom:1px solid #eee; color: #6f42c1; background: #fdfbfe;"><b>📦 Mã SP: ${code}</b><br><small>${info.name} [ĐVT: ${info.unit || 'N/A'}]</small><br>Số lượng trưng bày: <b>${displayInventory[code].scanned}</b></div>`;
+                }).join('');
+            }
+        }
+
+        // --- ĐỔI TÊN FILE KHI XUẤT EXCEL & ĐỊNH DẠNG CỘT MỚI (Yêu cầu nâng cấp 1 & 2) ---
+        function exportToExcel() {
+            const excelData = []; const now = new Date(); const timeSuffix = `${now.getFullYear()}${now.getMonth()+1}${now.getDate()}_${now.getHours()}${now.getMinutes()}`;
+            let finalFileName = "";
+
+            if (scanMode === 'kiem_hang') {
+                if (Object.keys(inventory).length === 0) { alert("Không có dữ liệu!"); return; }
+                excelData.push(["Mã Hàng", "Tên Hàng", "Đơn Vị", "Mã Phiếu", "Số Lượng Cần", "Số Lượng Nhận", "Chênh Lệch", "Trạng Thái"]);
+                for (let code in inventory) {
+                    const item = inventory[code]; const diff = item.scanned - item.expected;
+                    excelData.push([code, item.name, item.unit, item.ticketId, item.expected, item.scanned, diff, diff === 0 ? "Khớp" : (diff < 0 ? "Thiếu" : "Thừa")]);
+                }
+                finalFileName = `KiemHang_${timeSuffix}.xlsx`;
+            } else {
+                if (Object.keys(displayInventory).length === 0) { alert("Chưa có dữ liệu!"); return; }
+                
+                // Yêu cầu nâng cấp 1: Tạo tên file excel trước khi xuất file
+                let userInputName = prompt("NHẬP TÊN FILE EXCEL MUỐN LƯU:", `HangTrungBay_${timeSuffix}`);
+                if(userInputName === null) return; // Nếu ấn hủy không xuất nữa
+                userInputName = userInputName.trim();
+                if(userInputName === "") userInputName = `HangTrungBay_${timeSuffix}`;
+                if(!userInputName.toLowerCase().endsWith(".xlsx")) userInputName += ".xlsx";
+                finalFileName = userInputName;
+
+                // Yêu cầu nâng cấp 2: Xuất tuần tự makiot, ten, dvt và số lượng trưng bày
+                excelData.push(["makiot", "ten", "dvt", "Số lượng trưng bày"]);
+                for (let code in displayInventory) {
+                    let info = productDict[code] || { name: "", unit: "" };
+                    excelData.push([code, info.name, info.unit, displayInventory[code].scanned]);
+                }
+            }
+            
+            const worksheet = XLSX.utils.aoa_to_sheet(excelData); const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, scanMode === 'kiem_hang' ? "Kiem Hang" : "Trung Bay");
+            XLSX.writeFile(workbook, finalFileName);
+        }
+
+        // --- LƯU LỊCH SỬ PHIẾU KIỂM ---
+        function saveTicket() {
+            let hist = JSON.parse(localStorage.getItem('scanTickets') || "[]");
+            hist.push({ id: "LUU_" + Date.now(), date: new Date().toLocaleString('vi-VN'), data: inventory });
+            localStorage.setItem('scanTickets', JSON.stringify(hist)); alert("Đã lưu lịch sử phiếu!"); location.reload();
+        }
+
+        function showHistory() {
+            document.getElementById('tab-kiemhang-container').style.display = 'none'; document.getElementById('history-section').style.display = 'block';
+            const hist = JSON.parse(localStorage.getItem('scanTickets') || "[]");
+            document.getElementById('history-list').innerHTML = hist.reverse().map(t => `<div class="history-item" onclick="viewDetail('${t.id}')"><b>${t.id}</b><br><small>${t.date}</small><div class="delete-btn-small" onclick="deleteSingleTicket('${t.id}', event)">XOÁ</div></div>`).join('') || "Chưa có lịch sử";
+        }
+
+        function viewDetail(id) {
+            const t = JSON.parse(localStorage.getItem('scanTickets')||"[]").find(x=>x.id===id);
+            document.getElementById('history-section').style.display = 'none'; document.getElementById('detail-section').style.display = 'block';
+            let html = `<table><tr><th>SP</th><th>Số lượng</th></tr>`;
+            for(let c in t.data) html += `<tr><td>${t.data[c].name}<br><small>${c}</small></td><td>${t.data[c].scanned}/${t.data[c].expected}</td></tr>`;
+            document.getElementById('detail-content').innerHTML = html + "</table>";
+        }
+        function deleteSingleTicket(id, e) { e.stopPropagation(); if(confirm("Xoá?")) { let hist = JSON.parse(localStorage.getItem('scanTickets')||"[]").filter(t=>t.id!==id); localStorage.setItem('scanTickets', JSON.stringify(hist)); showHistory(); } }
+        function backToHistory() { document.getElementById('detail-section').style.display = 'none'; document.getElementById('history-section').style.display = 'block'; }
+    </script>
+</body>
+</html>
