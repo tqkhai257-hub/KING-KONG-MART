@@ -57,9 +57,8 @@
         .folder-header { background: #f8f9fa; color: #333; padding: 12px; font-weight: bold; font-size: 15px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; }
         .folder-body { padding: 10px; background: #fafafa; }
         
-        /* FIX LỖI: Thêm padding-right bảo vệ chữ không bị đè bởi nút XÓA FILE tuyệt đối */
-        .file-item-cloud { background: white; border: 1px solid #eee; border-radius: 6px; padding: 12px; margin-bottom: 10px; position: relative; padding-right: 95px; }
-        .delete-file-btn { position: absolute; right: 10px; top: 10px; background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: bold; }
+        /* Chỉnh lại CSS cho khung File - Bỏ padding dư thừa để dùng Flexbox */
+        .file-item-cloud { background: white; border: 1px solid #eee; border-radius: 6px; margin-bottom: 10px; overflow: hidden; }
     </style>
 </head>
 <body>
@@ -220,7 +219,7 @@
             }
         }
 
-        // --- HÀM CHUYỂN ĐỔI TAB (BỔ SUNG THÊM HOẠT ĐỘNG TAB 3 ĐÁM MÂY) ---
+        // --- HÀM CHUYỂN ĐỔI TAB ---
         function switchTab(tab) {
             scanMode = tab;
             if(html5QrCode) {
@@ -229,7 +228,6 @@
             }
             isPaused = false;
             
-            // Ẩn toàn bộ giao diện chính
             document.getElementById('tab-kiemhang-container').style.display = 'none';
             document.getElementById('tab-trungbay-container').style.display = 'none';
             document.getElementById('tab-tonghop-container').style.display = 'none';
@@ -239,12 +237,10 @@
             document.getElementById('history-section').style.display = 'none';
             document.getElementById('detail-section').style.display = 'none';
             
-            // Đổi trạng thái nút bấm trên Navigation Bar
             document.getElementById('nav-kiemhang').className = (tab === 'kiem_hang') ? 'nav-item active' : 'nav-item';
             document.getElementById('nav-trungbay').className = (tab === 'trung_bay') ? 'nav-item active' : 'nav-item';
             document.getElementById('nav-tonghop').className = (tab === 'tong_hop') ? 'nav-item active' : 'nav-item';
             
-            // Hiển thị tab tương ứng
             if(tab === 'kiem_hang') {
                 document.getElementById('tab-kiemhang-container').style.display = 'block';
             } else if(tab === 'trung_bay') {
@@ -253,7 +249,7 @@
                 document.getElementById('tab-tonghop-container').style.display = 'block';
                 loadCloudStructureV3();
             }
-        }
+        }            
 
         // --- XỬ LÝ FILE ĐỐI SOÁT PHIẾU KIỂM ---
         function processFile() {
@@ -294,13 +290,13 @@
             if(selected.length === 0) { alert("Bạn phải chọn ít nhất 1 phiếu!"); return; }
             inventory = {}; let totalItemsCount = 0;
             for(let i = headerIndex + 1; i < fullData.length; i++) {
-                let row = fullData[i];if (!row || row.length === 0) continue;
+                let row = fullData[i]; if (!row || row.length === 0) continue;
                 let tId = row[idxTicket] ? row[idxTicket].toString().trim() : null;
                 if(tId && selected.includes(tId)) {
                     let code = row[idxCode] ? row[idxCode].toString().trim() : null;
                     if(code) {
                         let expectedValue = parseFloat(row[idxQty]) || 0;
-                        if(!inventory[code]) inventory[code] = { expected: expectedValue, scanned: 0, logs: [], ticketId: tId, name: row[idxName] || "N/A", unit: row[idxUnit] || "" };
+                        if(!inventory[code]) inventory[code] = { expected:expectedValue, scanned: 0, logs: [], ticketId: tId, name: row[idxName] || "N/A", unit: row[idxUnit] || "" };
                         else inventory[code].expected += expectedValue;
                         totalItemsCount++;
                     }
@@ -308,7 +304,6 @@
             }
             if(totalItemsCount === 0) { alert("Phiếu trống!"); return; }
             
-            // Thiết lập giao diện quét kiểm phiếu
             document.getElementById('expected-box').style.display = 'block';
             document.getElementById('ticket-info-bar').style.display = 'block';
             document.getElementById('edit-display-btn').style.display = 'none';
@@ -343,12 +338,12 @@
                 let iMakiot = -1, iTen = -1, iDvt = -1;
                 for(let r = 0; r < Math.min(15, jsonData.length); r++) {
                     let rowStr = (jsonData[r] || []).join("").toLowerCase();
-                    if(rowStr.includes("makiot") || rowStr.includes("ten") || rowStr.includes("tên")) {
+                    if(rowStr.includes("makiot") || rowStr.includes("ten") || rowStr.includes("tên") || rowStr.includes("hàng hóa")) {
                         let hRow = jsonData[r];
                         for(let c = 0; c < hRow.length; c++) {
                             let hText = (hRow[c] || "").toString().toLowerCase().trim();
                             if(hText === "makiot" || hText === "mã sản phẩm" || hText === "mã hàng") iMakiot = c;
-                            else if(hText === "ten" || hText === "tên" || hText === "tên sản phẩm" || hText === "tên hàng") iTen = c;
+                            else if(hText === "ten" || hText === "tên" || hText === "tên sản phẩm" || hText === "tên hàng" || hText === "tên hàng hóa") iTen = c;
                             else if(hText === "dvt" || hText === "đvt" || hText === "đơn vị tính") iDvt = c;
                         }
                         break;
@@ -366,7 +361,7 @@
                 }
 
                 if(iMakiot === -1) {
-                    alert("Không tìm thấy tiêu đề cột 'makiot' trong file của bạn. Vui lòng kiểm tra lại file.");
+                    alert("Không tìm thấy tiêu đề cột 'mã hàng / makiot' trong file của bạn. Vui lòng kiểm tra lại file.");
                     return;
                 }
 
@@ -403,8 +398,7 @@
             document.getElementById('scan-section').style.display = 'block';
             startScanner();
         }
-
-        // --- QUÉT MÃ VÀ NHẬN DIỆN THÔNG TIN ---
+                // --- QUÉT MÃ VÀ NHẬN DIỆN THÔNG TIN ---
         function handleDisplayScan(code) {
             if(navigator.vibrate) navigator.vibrate(100);
             let itemInfo = productDict[code] || { name: "Mã lạ (Không có trong danh mục file)", unit: "" };
@@ -413,7 +407,8 @@
             if (qtyStr !== null && qtyStr.trim() !== "") {
                 let qty = parseInt(qtyStr);
                 if (!isNaN(qty) && qty >= 0) {
-                    if (!displayInventory[code]) displayInventory[code] = { scanned: 0 };
+                    // SỬA LỖI Ở ĐÂY: Lưu kèm TÊN và ĐVT vào data ngay từ lúc quét
+                    if (!displayInventory[code]) displayInventory[code] = { scanned: 0, name: itemInfo.name, unit: itemInfo.unit };
                     displayInventory[code].scanned += qty;
                     
                     document.getElementById('cur-code').innerText = code;
@@ -468,7 +463,7 @@
             container.insertBefore(toast, container.firstChild);
             if (container.childNodes.length > 3) container.removeChild(container.lastChild);
         }
-        // --- THÊM MÃ BẰNG TAY CHO CẢ KIỂM HÀNG VÀ TRƯNG BÀY ---
+                // --- THÊM MÃ BẰNG TAY CHO CẢ KIỂM HÀNG VÀ TRƯNG BÀY ---
         function addManualQty() {
             let defaultCode = lastScannedCode || "";
             let targetCode = prompt("NHẬP MÃ SẢN PHẨM KHÔNG QUÉT ĐƯỢC:", defaultCode);
@@ -499,7 +494,8 @@
                     if (input !== null && input.trim() !== "") {
                         let qty = parseInt(input);
                         if (!isNaN(qty) && qty > 0) {
-                            if (!displayInventory[targetCode]) displayInventory[targetCode] = { scanned: 0 };
+                            // SỬA LỖI Ở ĐÂY: Lưu kèm TÊN và ĐVT khi nhập tay
+                            if (!displayInventory[targetCode]) displayInventory[targetCode] = { scanned: 0, name: itemInfo.name, unit: itemInfo.unit };
                             displayInventory[targetCode].scanned += qty;
                             
                             document.getElementById('cur-code').innerText = targetCode;
@@ -566,8 +562,7 @@
         function closeEditDisplayModal() {
             document.getElementById('edit-display-modal').style.display = 'none';
         }
-
-        // --- CÁC TÍNH NĂNG ĐO ĐẠC HSD KHÔNG ĐỔI ---
+                // --- CÁC TÍNH NĂNG ĐO ĐẠC HSD KHÔNG ĐỔI ---
         function calculateHSD() {
             const nsx = new Date(document.getElementById('nsx-input').value).getTime(), hsd = new Date(document.getElementById('hsd-input').value).getTime(), today = new Date().getTime();
             if (!nsx || !hsd) return; const pc = ((hsd - today) / (hsd - nsx)) * 100;
@@ -607,7 +602,7 @@
             }
         }
 
-        // --- XUẤT EXCEL GỐC GIỮ NGUYÊN ---
+        // --- SỬA LỖI XUẤT EXCEL TẠI LÔ CỤ THỂ ---
         function exportToExcel() {
             const excelData = []; const now = new Date(); const timeSuffix = `${now.getFullYear()}${now.getMonth()+1}${now.getDate()}_${now.getHours()}${now.getMinutes()}`;
             let finalFileName = "";
@@ -629,10 +624,11 @@
                 if(!userInputName.toLowerCase().endsWith(".xlsx")) userInputName += ".xlsx";
                 finalFileName = userInputName;
 
-                excelData.push(["makiot", "ten", "dvt", "Số lượng trưng bày"]);
+                excelData.push(["mã hàng", "tên sản phẩm", "đơn vị tính", "Số lượng trưng bày"]);
                 for (let code in displayInventory) {
-                    let info = productDict[code] || { name: "", unit: "" };
-                    excelData.push([code, info.name, info.unit, displayInventory[code].scanned]);
+                    let name = displayInventory[code].name || (productDict[code] ? productDict[code].name : "Không rõ");
+                    let unit = displayInventory[code].unit || (productDict[code] ? productDict[code].unit : "");
+                    excelData.push([code, name, unit, displayInventory[code].scanned]);
                 }
             }
             
@@ -641,7 +637,7 @@
             XLSX.writeFile(workbook, finalFileName);
         }
 
-        // --- ĐỒNG BỘ DỮ LIỆU ĐẾM KỆ TRƯNG BÀY LÊN ĐÁM MÂY (TÍNH NĂNG MỚI) ---
+        // --- SỬA LỖI ĐỒNG BỘ: Đảm bảo Name/Unit được lưu kèm lên Đám mây ---
         function exportAndSyncDisplayV3() {
             if (Object.keys(displayInventory).length === 0) { alert("Không có dữ liệu kiểm kê để xuất!"); return; }
             
@@ -653,10 +649,11 @@
             if(finalFileName === "") finalFileName = `File_Quet_${currentFolder}`;
             if(!finalFileName.toLowerCase().endsWith(".xlsx")) finalFileName += ".xlsx";
 
-            let arr = [["makiot", "ten", "dvt", "Số lượng trưng bày"]];
+            let arr = [["mã hàng", "tên sản phẩm", "đơn vị tính", "Số lượng trưng bày"]];
             for(let code in displayInventory) {
-                let info = productDict[code] || { name: "", unit: "" };
-                arr.push([code, info.name, info.unit, displayInventory[code].scanned]);
+                let name = displayInventory[code].name || (productDict[code] ? productDict[code].name : "Không rõ");
+                let unit = displayInventory[code].unit || (productDict[code] ? productDict[code].unit : "");
+                arr.push([code, name, unit, displayInventory[code].scanned]);
             }
             const ws = XLSX.utils.aoa_to_sheet(arr); 
             const wb = XLSX.utils.book_new();
@@ -681,7 +678,8 @@
                 alert("⚠️ Đã tải file Excel. Hệ thống chưa kết nối cơ sở dữ liệu Firebase nên không lưu trực tuyến được.");
             }
         }
-        // --- LOGIC ĐỒNG BỘ VÀ TẠO THƯ MỤC TRÊN TRANG TỔNG HỢP (TÍNH NĂNG MỚI) ---
+
+        // --- LOGIC ĐỒNG BỘ VÀ TẠO THƯ MỤC TRÊN TRANG TỔNG HỢP ---
         function initFolderSync() {
             const selectEl = document.getElementById('folder-select');
             if(!selectEl) return;
@@ -714,8 +712,17 @@
             }
         }
 
-        // --- SỬA/THÊM: TÍNH NĂNG THU GỌN VÀ NÚT XUẤT EXCEL TỔNG CHO THƯ MỤC TỔNG HỢP ---
         function toggleCloudFolder(el) {
+            const body = el.nextElementSibling;
+            if (body.style.display === "none") {
+                body.style.display = "block";
+            } else {
+                body.style.display = "none";
+            }
+        }
+
+        // --- SỬA/THÊM MỚI: TÍNH NĂNG ĐÓNG MỞ TỪNG FILE CON BÊN TRONG ---
+        function toggleCloudFile(el) {
             const body = el.nextElementSibling;
             if (body.style.display === "none") {
                 body.style.display = "block";
@@ -733,7 +740,6 @@
             let internalFiles = window.lastCloudData[folderName];
             let combinedInventory = {};
             
-            // Tiến hành gộp dữ liệu từ tất cả các file trong thư mục này lại thành một
             for (let fileId in internalFiles) {
                 let prods = internalFiles[fileId].products || {};
                 for (let pCode in prods) {
@@ -748,7 +754,7 @@
                 }
             }
             
-            let excelData = [["makiot", "ten", "dvt", "Số lượng trưng bày tổng hợp"]];
+            let excelData = [["mã hàng", "tên sản phẩm", "đơn vị tính", "Số lượng trưng bày tổng hợp"]];
             for (let pCode in combinedInventory) {
                 excelData.push([
                     pCode, 
@@ -784,7 +790,7 @@
             
             database.ref('trungbay_v3_data').on('value', (snapCloud) => {
                 let actualData = snapCloud.val() || {};
-                window.lastCloudData = actualData; // Lưu tạm dữ liệu đám mây vào cửa sổ hệ thống để phục vụ hàm xuất gộp Excel
+                window.lastCloudData = actualData; 
                 
                 database.ref('trungbay_v3_folders').once('value', (snapFolders) => {
                     let foldersList = snapFolders.val() || { "Chung": true };
@@ -792,7 +798,6 @@
 
                     for(let fKey in foldersList) {
                         masterHtml += `<div class="folder-block">`;
-                        // Thêm sự kiện onclick vào header để thu gọn/mở rộng và nút bấm xuất Excel Tổng hợp nhóm
                         masterHtml += `
                         <div class="folder-header" onclick="toggleCloudFolder(this)" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
                             <span>📂 Thư mục: ${fKey}</span>
@@ -810,26 +815,32 @@
                                 let meta = fContent.meta || { fileName: "File không tên", date: "Không rõ thời gian" };
                                 let prods = fContent.products || {};
                                 let totalUnique = Object.keys(prods).length;
-
+                                // --- ĐÃ SỬA LỖI LAYOUT NÚT XOÁ ICON VÀ CHO PHÉP FILE ĐÓNG/MỞ ---
                                 masterHtml += `
-                                <div class="file-item-cloud">
-                                    <div style="font-weight: bold; color: #333; font-size:14px; padding-right: 5px;">📄 ${meta.fileName}</div>
-                                    <div style="font-size:11px; color:#666; margin-top:3px;">Ngày xuất đồng bộ: ${meta.date} | Quy mô: ${totalUnique} mặt hàng</div>
-                                    <button class="delete-file-btn" onclick="deleteFileFromCloudFolder('${fKey}', '${fileId}')">XÓA FILE</button>
-                                    
-                                    <table style="margin-top: 8px; background: #fff;">
-                                        <thead>
-                                            <tr><th>Mã Hàng</th><th>Tên Sản Phẩm</th><th>Số Lượng</th></tr>
-                                        </thead>
-                                        <tbody>`;
-                                        for(let pCode in prods) {
-                                            masterHtml += `<tr>
-                                                <td>${pCode}</td>
-                                                <td>${prods[pCode].name || (productDict[pCode] ? productDict[pCode].name : "Không rõ")}</td>
-                                                <td><b style="color:#6f42c1;">${prods[pCode].scanned}</b> ${prods[pCode].unit || (productDict[pCode] ? productDict[pCode].unit : '')}</td>
-                                            </tr>`;
-                                        }
-                                masterHtml += `</tbody></table></div>`;
+                                <div class="file-item-cloud" style="padding: 0;">
+                                    <div class="file-header-cloud" onclick="toggleCloudFile(this)" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 12px; background: #fff; border-bottom: 1px solid #eee;">
+                                        <div>
+                                            <div style="font-weight: bold; color: #333; font-size:14px;">📄 ${meta.fileName}</div>
+                                            <div style="font-size:11px; color:#666; margin-top:3px;">Ngày xuất: ${meta.date} | ${totalUnique} mặt hàng</div>
+                                        </div>
+                                        <button onclick="event.stopPropagation(); deleteFileFromCloudFolder('${fKey}', '${fileId}')" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #dc3545; padding: 5px;" title="Xóa File">🗑️</button>
+                                    </div>
+                                    <div class="file-body-cloud" style="display: none; padding: 10px; background: #fafafa;">
+                                        <table style="margin-top: 0; background: #fff; width: 100%;">
+                                            <thead>
+                                                <tr><th>Mã Hàng</th><th>Tên Sản Phẩm</th><th>Số Lượng</th></tr>
+                                            </thead>
+                                            <tbody>`;
+                                            for(let pCode in prods) {
+                                                let itemName = prods[pCode].name || (productDict[pCode] ? productDict[pCode].name : "Không rõ");
+                                                let itemUnit = prods[pCode].unit || (productDict[pCode] ? productDict[pCode].unit : "");
+                                                masterHtml += `<tr>
+                                                    <td>${pCode}</td>
+                                                    <td>${itemName}</td>
+                                                    <td><b style="color:#6f42c1;">${prods[pCode].scanned}</b> ${itemUnit}</td>
+                                                </tr>`;
+                                            }
+                                masterHtml += `</tbody></table></div></div>`;
                             }
                         } else {
                             masterHtml += `<p style="color:#aaa; font-size:12px; margin:5px 0; font-style:italic;">Thư mục này hiện tại chưa có file/lô dữ liệu nào được đẩy lên.</p>`;
@@ -878,5 +889,3 @@
     </script>
 </body>
 </html>
-
-
