@@ -56,7 +56,6 @@
         .folder-block { border: 1px solid #ddd; border-radius: 8px; margin-bottom: 15px; background: #fff; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         .folder-header { background: #f8f9fa; color: #333; padding: 12px; font-weight: bold; font-size: 15px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; }
         .folder-body { padding: 10px; background: #fafafa; }
-        
         /* Chỉnh lại CSS cho khung File - Bỏ padding dư thừa để dùng Flexbox */
         .file-item-cloud { background: white; border: 1px solid #eee; border-radius: 6px; margin-bottom: 10px; overflow: hidden; }
     </style>
@@ -163,7 +162,6 @@
         <button id="save-ticket-btn" onclick="saveTicket()" class="btn-success" style="margin-top: 10px;">HOÀN THÀNH & LƯU</button>
         <button onclick="location.reload()" class="btn-secondary" style="margin-top:10px;">BỎ QUA / TRANG CHỦ</button>
     </div>
-
     <div id="history-section" class="card" style="display:none;">
         <h2>Lịch sử phiếu</h2>
         <div id="history-list"></div>
@@ -315,7 +313,6 @@
             document.getElementById('scan-section').style.display = 'block';
             startScanner();
         }
-
         // --- XỬ LÝ ĐỌC DANH MỤC FILE TRƯNG BÀY ---
         function loadMasterDataAndStart() {
             const fileInput = document.getElementById('master-file').files[0];
@@ -398,28 +395,35 @@
             document.getElementById('scan-section').style.display = 'block';
             startScanner();
         }
-                // --- QUÉT MÃ VÀ NHẬN DIỆN THÔNG TIN ---
+        
+        // --- QUÉT MÃ VÀ NHẬN DIỆN THÔNG TIN ---
         function handleDisplayScan(code) {
             if(navigator.vibrate) navigator.vibrate(100);
             let itemInfo = productDict[code] || { name: "Mã lạ (Không có trong danh mục file)", unit: "" };
             
-            let qtyStr = prompt(`Quét thành công mã: ${code}\nTên: ${itemInfo.name}\nĐVT: ${itemInfo.unit}\n\nNhập số lượng trưng bày:`, "1");
-            if (qtyStr !== null && qtyStr.trim() !== "") {
-                let qty = parseInt(qtyStr);
-                if (!isNaN(qty) && qty >= 0) {
-                    // SỬA LỖI Ở ĐÂY: Lưu kèm TÊN và ĐVT vào data ngay từ lúc quét
-                    if (!displayInventory[code]) displayInventory[code] = { scanned: 0, name: itemInfo.name, unit: itemInfo.unit };
-                    displayInventory[code].scanned += qty;
-                    
-                    document.getElementById('cur-code').innerText = code;
-                    document.getElementById('cur-received').innerText = displayInventory[code].scanned;
-                    document.getElementById('cur-name').innerText = itemInfo.name;
-                    document.getElementById('cur-unit').innerText = itemInfo.unit ? `(${itemInfo.unit})` : "";
-                    
-                    pushToast(code, new Date().toLocaleTimeString(), {expected: 'OK'}, `Đã thêm ${qty} (Tổng: ${displayInventory[code].scanned})`);
-                } else { alert("Số lượng nhập không hợp lệ!"); }
-            }
-            setTimeout(() => { isPaused = false; }, 1000);
+            // [VÁ LỖI iOS SAFARI] - Bọc hàm prompt() bên trong setTimeout 
+            // Giúp tách việc hiện bảng nhập ra khỏi luồng xử lý video của camera, tránh đứng máy.
+            setTimeout(() => {
+                let qtyStr = prompt(`Quét thành công mã: ${code}\nTên: ${itemInfo.name}\nĐVT: ${itemInfo.unit}\n\nNhập số lượng trưng bày:`, "1");
+                if (qtyStr !== null && qtyStr.trim() !== "") {
+                    let qty = parseInt(qtyStr);
+                    if (!isNaN(qty) && qty >= 0) {
+                        if (!displayInventory[code]) displayInventory[code] = { scanned: 0, name: itemInfo.name, unit: itemInfo.unit };
+                        displayInventory[code].scanned += qty;
+                        
+                        document.getElementById('cur-code').innerText = code;
+                        document.getElementById('cur-received').innerText = displayInventory[code].scanned;
+                        document.getElementById('cur-name').innerText = itemInfo.name;
+                        document.getElementById('cur-unit').innerText = itemInfo.unit ? `(${itemInfo.unit})` : "";
+                        
+                        pushToast(code, new Date().toLocaleTimeString(), {expected: 'OK'}, `Đã thêm ${qty} (Tổng: ${displayInventory[code].scanned})`);
+                    } else { 
+                        alert("Số lượng nhập không hợp lệ!"); 
+                    }
+                }
+                
+                setTimeout(() => { isPaused = false; }, 1000);
+            }, 100); // Trì hoãn 100ms
         }
 
         async function startScanner() {
@@ -463,54 +467,56 @@
             container.insertBefore(toast, container.firstChild);
             if (container.childNodes.length > 3) container.removeChild(container.lastChild);
         }
-                // --- THÊM MÃ BẰNG TAY CHO CẢ KIỂM HÀNG VÀ TRƯNG BÀY ---
+        
+        // --- THÊM MÃ BẰNG TAY CHO CẢ KIỂM HÀNG VÀ TRƯNG BÀY ---
         function addManualQty() {
             let defaultCode = lastScannedCode || "";
-            let targetCode = prompt("NHẬP MÃ SẢN PHẨM KHÔNG QUÉT ĐƯỢC:", defaultCode);
-            if (targetCode !== null && targetCode.trim() !== "") {
-                targetCode = targetCode.trim();
-                
-                if (scanMode === 'kiem_hang') {
-                    let isNewCode = (targetCode !== lastScannedCode);
-                    let input = prompt(isNewCode ? "Nhập SỐ LƯỢNG cộng thêm:" : "Nhập TỔNG SỐ LƯỢNG lốc/hộp:", "");
-                    if (input !== null && input.trim() !== "") {
-                        let qty = parseInt(input);
-                        if (!isNaN(qty)) {
-                            let extra = isNewCode ? qty : (qty - 1);
-                            if (extra > 0) {
-                                if (!inventory[targetCode]) inventory[targetCode] = { expected: 0, scanned: 0, logs: [], ticketId: "---", name: "SP Ngoại lai", unit: "" };
-                                inventory[targetCode].scanned += extra;
-                                document.getElementById('cur-code').innerText = targetCode;
-                                document.getElementById('cur-expected').innerText = inventory[targetCode].expected;
-                                document.getElementById('cur-received').innerText = inventory[targetCode].scanned;
-                                pushToast(targetCode, new Date().toLocaleTimeString(), inventory[targetCode], `Đã cộng thêm: +${extra}`);
-                                lastScannedCode = targetCode;
+            // Áp dụng luôn setTimeout cho an toàn trên iOS nếu bấm nút khi camera đang chạy
+            setTimeout(() => {
+                let targetCode = prompt("NHẬP MÃ SẢN PHẨM KHÔNG QUÉT ĐƯỢC:", defaultCode);
+                if (targetCode !== null && targetCode.trim() !== "") {
+                    targetCode = targetCode.trim();
+                    
+                    if (scanMode === 'kiem_hang') {
+                        let isNewCode = (targetCode !== lastScannedCode);
+                        let input = prompt(isNewCode ? "Nhập SỐ LƯỢNG cộng thêm:" : "Nhập TỔNG SỐ LƯỢNG lốc/hộp:", "");
+                        if (input !== null && input.trim() !== "") {
+                            let qty = parseInt(input);
+                            if (!isNaN(qty)) {
+                                let extra = isNewCode ? qty : (qty - 1);
+                                if (extra > 0) {
+                                    if (!inventory[targetCode]) inventory[targetCode] = { expected: 0, scanned: 0, logs: [], ticketId: "---", name: "SP Ngoại lai", unit: "" };
+                                    inventory[targetCode].scanned += extra;
+                                    document.getElementById('cur-code').innerText = targetCode;
+                                    document.getElementById('cur-expected').innerText = inventory[targetCode].expected;
+                                    document.getElementById('cur-received').innerText = inventory[targetCode].scanned;
+                                    pushToast(targetCode, new Date().toLocaleTimeString(), inventory[targetCode], `Đã cộng thêm: +${extra}`);
+                                    lastScannedCode = targetCode;
+                                }
                             }
                         }
-                    }
-                } else if (scanMode === 'trung_bay') {
-                    let itemInfo = productDict[targetCode] || { name: "Mã lạ (Không có trong danh mục file)", unit: "" };
-                    let input = prompt(`Mã thủ công: ${targetCode}\nTên: ${itemInfo.name}\nNhập số lượng trưng bày cần cộng thêm:`, "1");
-                    if (input !== null && input.trim() !== "") {
-                        let qty = parseInt(input);
-                        if (!isNaN(qty) && qty > 0) {
-                            // SỬA LỖI Ở ĐÂY: Lưu kèm TÊN và ĐVT khi nhập tay
-                            if (!displayInventory[targetCode]) displayInventory[targetCode] = { scanned: 0, name: itemInfo.name, unit: itemInfo.unit };
-                            displayInventory[targetCode].scanned += qty;
-                            
-                            document.getElementById('cur-code').innerText = targetCode;
-                            document.getElementById('cur-received').innerText = displayInventory[targetCode].scanned;
-                            document.getElementById('cur-name').innerText = itemInfo.name;
-                            document.getElementById('cur-unit').innerText = itemInfo.unit ? `(${itemInfo.unit})` : "";
-                            
-                            pushToast(targetCode, new Date().toLocaleTimeString(), {expected: 'OK'}, `Đã thêm tay +${qty} (Tổng: ${displayInventory[targetCode].scanned})`);
-                            lastScannedCode = targetCode;
-                        } else { alert("Số lượng nhập không hợp lệ!"); }
+                    } else if (scanMode === 'trung_bay') {
+                        let itemInfo = productDict[targetCode] || { name: "Mã lạ (Không có trong danh mục file)", unit: "" };
+                        let input = prompt(`Mã thủ công: ${targetCode}\nTên: ${itemInfo.name}\nNhập số lượng trưng bày cần cộng thêm:`, "1");
+                        if (input !== null && input.trim() !== "") {
+                            let qty = parseInt(input);
+                            if (!isNaN(qty) && qty > 0) {
+                                if (!displayInventory[targetCode]) displayInventory[targetCode] = { scanned: 0, name: itemInfo.name, unit: itemInfo.unit };
+                                displayInventory[targetCode].scanned += qty;
+                                
+                                document.getElementById('cur-code').innerText = targetCode;
+                                document.getElementById('cur-received').innerText = displayInventory[targetCode].scanned;
+                                document.getElementById('cur-name').innerText = itemInfo.name;
+                                document.getElementById('cur-unit').innerText = itemInfo.unit ? `(${itemInfo.unit})` : "";
+                                
+                                pushToast(targetCode, new Date().toLocaleTimeString(), {expected: 'OK'}, `Đã thêm tay +${qty} (Tổng: ${displayInventory[targetCode].scanned})`);
+                                lastScannedCode = targetCode;
+                            } else { alert("Số lượng nhập không hợp lệ!"); }
+                        }
                     }
                 }
-            }
+            }, 50);
         }
-
         // --- DANH SÁCH VÀ CHỨC NĂNG SỬA LẠI SỐ LƯỢNG ĐÃ QUÉT ---
         function openEditDisplayModal() {
             let keys = Object.keys(displayInventory);
@@ -562,7 +568,8 @@
         function closeEditDisplayModal() {
             document.getElementById('edit-display-modal').style.display = 'none';
         }
-                // --- CÁC TÍNH NĂNG ĐO ĐẠC HSD KHÔNG ĐỔI ---
+        
+        // --- CÁC TÍNH NĂNG ĐO ĐẠC HSD KHÔNG ĐỔI ---
         function calculateHSD() {
             const nsx = new Date(document.getElementById('nsx-input').value).getTime(), hsd = new Date(document.getElementById('hsd-input').value).getTime(), today = new Date().getTime();
             if (!nsx || !hsd) return; const pc = ((hsd - today) / (hsd - nsx)) * 100;
@@ -601,7 +608,7 @@
                 }).join('');
             }
         }
-
+        
         // --- SỬA LỖI XUẤT EXCEL TẠI LÔ CỤ THỂ ---
         function exportToExcel() {
             const excelData = []; const now = new Date(); const timeSuffix = `${now.getFullYear()}${now.getMonth()+1}${now.getDate()}_${now.getHours()}${now.getMinutes()}`;
@@ -617,19 +624,28 @@
                 finalFileName = `KiemHang_${timeSuffix}.xlsx`;
             } else {
                 if (Object.keys(displayInventory).length === 0) { alert("Chưa có dữ liệu!"); return; }
-                let userInputName = prompt("NHẬP TÊN FILE EXCEL MUỐN LƯU:", `HangTrungBay_${timeSuffix}`);
-                if(userInputName === null) return; 
-                userInputName = userInputName.trim();
-                if(userInputName === "") userInputName = `HangTrungBay_${timeSuffix}`;
-                if(!userInputName.toLowerCase().endsWith(".xlsx")) userInputName += ".xlsx";
-                finalFileName = userInputName;
+                
+                // Đồng bộ fix timeout cho xuất excel
+                setTimeout(() => {
+                    let userInputName = prompt("NHẬP TÊN FILE EXCEL MUỐN LƯU:", `HangTrungBay_${timeSuffix}`);
+                    if(userInputName === null) return; 
+                    userInputName = userInputName.trim();
+                    if(userInputName === "") userInputName = `HangTrungBay_${timeSuffix}`;
+                    if(!userInputName.toLowerCase().endsWith(".xlsx")) userInputName += ".xlsx";
+                    finalFileName = userInputName;
 
-                excelData.push(["mã hàng", "tên sản phẩm", "đơn vị tính", "Số lượng trưng bày"]);
-                for (let code in displayInventory) {
-                    let name = displayInventory[code].name || (productDict[code] ? productDict[code].name : "Không rõ");
-                    let unit = displayInventory[code].unit || (productDict[code] ? productDict[code].unit : "");
-                    excelData.push([code, name, unit, displayInventory[code].scanned]);
-                }
+                    excelData.push(["mã hàng", "tên sản phẩm", "đơn vị tính", "Số lượng trưng bày"]);
+                    for (let code in displayInventory) {
+                        let name = displayInventory[code].name || (productDict[code] ? productDict[code].name : "Không rõ");
+                        let unit = displayInventory[code].unit || (productDict[code] ? productDict[code].unit : "");
+                        excelData.push([code, name, unit, displayInventory[code].scanned]);
+                    }
+                    
+                    const worksheet = XLSX.utils.aoa_to_sheet(excelData); const workbook = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(workbook, worksheet, scanMode === 'kiem_hang' ? "Kiem Hang" : "Trung Bay");
+                    XLSX.writeFile(workbook, finalFileName);
+                }, 50);
+                return; // Tránh chạy luồng xuất ở dưới
             }
             
             const worksheet = XLSX.utils.aoa_to_sheet(excelData); const workbook = XLSX.utils.book_new();
@@ -641,44 +657,45 @@
         function exportAndSyncDisplayV3() {
             if (Object.keys(displayInventory).length === 0) { alert("Không có dữ liệu kiểm kê để xuất!"); return; }
             
-            let timeStr = new Date().toLocaleString('vi-VN');
-            let timestamp = Date.now();
-            let finalFileName = prompt("NHẬP TÊN LÔ HÀNG ĐỂ ĐỒNG BỘ LÊN ĐÁM MÂY:", `File_Quet_${currentFolder}`);
-            if(!finalFileName) return;
-            finalFileName = finalFileName.trim();
-            if(finalFileName === "") finalFileName = `File_Quet_${currentFolder}`;
-            if(!finalFileName.toLowerCase().endsWith(".xlsx")) finalFileName += ".xlsx";
+            setTimeout(() => {
+                let timeStr = new Date().toLocaleString('vi-VN');
+                let timestamp = Date.now();
+                let finalFileName = prompt("NHẬP TÊN LÔ HÀNG ĐỂ ĐỒNG BỘ LÊN ĐÁM MÂY:", `File_Quet_${currentFolder}`);
+                if(!finalFileName) return;
+                finalFileName = finalFileName.trim();
+                if(finalFileName === "") finalFileName = `File_Quet_${currentFolder}`;
+                if(!finalFileName.toLowerCase().endsWith(".xlsx")) finalFileName += ".xlsx";
 
-            let arr = [["mã hàng", "tên sản phẩm", "đơn vị tính", "Số lượng trưng bày"]];
-            for(let code in displayInventory) {
-                let name = displayInventory[code].name || (productDict[code] ? productDict[code].name : "Không rõ");
-                let unit = displayInventory[code].unit || (productDict[code] ? productDict[code].unit : "");
-                arr.push([code, name, unit, displayInventory[code].scanned]);
-            }
-            const ws = XLSX.utils.aoa_to_sheet(arr); 
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Trung Bay");
-            XLSX.writeFile(wb, finalFileName);
+                let arr = [["mã hàng", "tên sản phẩm", "đơn vị tính", "Số lượng trưng bày"]];
+                for(let code in displayInventory) {
+                    let name = displayInventory[code].name || (productDict[code] ? productDict[code].name : "Không rõ");
+                    let unit = displayInventory[code].unit || (productDict[code] ? productDict[code].unit : "");
+                    arr.push([code, name, unit, displayInventory[code].scanned]);
+                }
+                const ws = XLSX.utils.aoa_to_sheet(arr); 
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Trung Bay");
+                XLSX.writeFile(wb, finalFileName);
 
-            if(isFirebaseReady) {
-                let packet = {
-                    meta: { fileName: finalFileName.replace(".xlsx", ""), date: timeStr, timestamp: timestamp },
-                    products: displayInventory
-                };
-                
-                database.ref(`trungbay_v3_data/${currentFolder}/${timestamp}`).set(packet, (error) => {
-                    if(!error) {
-                        alert(`🎉 Thành công!\n1. Đã lưu file báo cáo về điện thoại.\n2. Đã tự động tải đồng bộ lên Đám Mây vào cây thư mục [${currentFolder}].`);
-                        location.reload();
-                    } else {
-                        alert("Lỗi đường truyền mạng đám mây: " + error);
-                    }
-                });
-            } else {
-                alert("⚠️ Đã tải file Excel. Hệ thống chưa kết nối cơ sở dữ liệu Firebase nên không lưu trực tuyến được.");
-            }
+                if(isFirebaseReady) {
+                    let packet = {
+                        meta: { fileName: finalFileName.replace(".xlsx", ""), date: timeStr, timestamp: timestamp },
+                        products: displayInventory
+                    };
+                    
+                    database.ref(`trungbay_v3_data/${currentFolder}/${timestamp}`).set(packet, (error) => {
+                        if(!error) {
+                            alert(`🎉 Thành công!\n1. Đã lưu file báo cáo về điện thoại.\n2. Đã tự động tải đồng bộ lên Đám Mây vào cây thư mục [${currentFolder}].`);
+                            location.reload();
+                        } else {
+                            alert("Lỗi đường truyền mạng đám mây: " + error);
+                        }
+                    });
+                } else {
+                    alert("⚠️ Đã tải file Excel. Hệ thống chưa kết nối cơ sở dữ liệu Firebase nên không lưu trực tuyến được.");
+                }
+            }, 50);
         }
-
         // --- LOGIC ĐỒNG BỘ VÀ TẠO THƯ MỤC TRÊN TRANG TỔNG HỢP ---
         function initFolderSync() {
             const selectEl = document.getElementById('folder-select');
@@ -721,7 +738,6 @@
             }
         }
 
-        // --- SỬA/THÊM MỚI: TÍNH NĂNG ĐÓNG MỞ TỪNG FILE CON BÊN TRONG ---
         function toggleCloudFile(el) {
             const body = el.nextElementSibling;
             if (body.style.display === "none") {
@@ -815,7 +831,6 @@
                                 let meta = fContent.meta || { fileName: "File không tên", date: "Không rõ thời gian" };
                                 let prods = fContent.products || {};
                                 let totalUnique = Object.keys(prods).length;
-                                // --- ĐÃ SỬA LỖI LAYOUT NÚT XOÁ ICON VÀ CHO PHÉP FILE ĐÓNG/MỞ ---
                                 masterHtml += `
                                 <div class="file-item-cloud" style="padding: 0;">
                                     <div class="file-header-cloud" onclick="toggleCloudFile(this)" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 12px; background: #fff; border-bottom: 1px solid #eee;">
@@ -883,7 +898,6 @@
         }
         function deleteSingleTicket(id, e) { e.stopPropagation(); if(confirm("Xoá?")) { let hist = JSON.parse(localStorage.getItem('scanTickets')||"[]").filter(t=>t.id!==id); localStorage.setItem('scanTickets', JSON.stringify(hist)); showHistory(); } }
         function backToHistory() { document.getElementById('detail-section').style.display = 'none'; document.getElementById('history-section').style.display = 'block'; }
-
         // Khởi chạy hệ thống đám mây ngay khi mở ứng dụng
         initFirebaseSystem();
     </script>
